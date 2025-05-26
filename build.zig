@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) void {
     // for actually invoking the compiler.
     const lib = b.addLibrary(.{
         .linkage = .static,
-        .name = "Zig2dEngine",
+        .name = "zig2d",
         .root_module = lib_mod,
     });
 
@@ -78,6 +78,9 @@ pub fn build(b: *std.Build) void {
     const raylib = raylib_dep.module("raylib"); // main raylib module
     const raygui = raylib_dep.module("raygui"); // raygui module
     const raylib_artifact = raylib_dep.artifact("raylib"); // raylib C library
+
+    lib_mod.addImport("raylib", raylib);
+    lib_mod.addImport("raygui", raygui);
 
     exe.linkLibrary(raylib_artifact);
     exe.root_module.addImport("raylib", raylib);

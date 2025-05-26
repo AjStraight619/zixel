@@ -85,4 +85,11 @@ test "Vector2" {
     const v1 = Vector2.init(1, 2);
     const v2 = Vector2.init(3, 4);
     _ = v1.add(v2);
+    const v3 = Vector2.init(1, 1);
+    const v4 = Vector2.init(0, 1);
+    _ = v3.div(v4);
+}
+
+test "force fail" {
+    @panic("This should fail!");
 }
