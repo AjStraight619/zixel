@@ -27,6 +27,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(lib);
 
+    // Tests - using dedicated test runner
+    const lib_unit_tests = b.addTest(.{
+        .root_source_file = b.path("src/test_runner.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    lib_unit_tests.root_module.addImport("raylib", raylib);
+    lib_unit_tests.root_module.addImport("raygui", raygui);
+    lib_unit_tests.linkLibrary(raylib_artifact);
+
+    const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_lib_unit_tests.step);
+
     // Basic example
     const basic_mod = b.createModule(.{
         .root_source_file = b.path("examples/basic/main.zig"),
