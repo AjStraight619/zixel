@@ -12,6 +12,10 @@ pub const PhysicsWorld = struct {
     next_id: usize = 0,
     gravity: Vector2,
 
+    // Simulation state
+    accumulated_time: f32 = 0.0,
+    step_count: u64 = 0,
+
     const Self = @This();
 
     pub fn init(alloc: std.mem.Allocator, config: PhysicsConfig) !Self {
@@ -28,15 +32,64 @@ pub const PhysicsWorld = struct {
     }
 
     pub fn update(self: *Self, deltaTime: f32) void {
+        // Clamp delta time to prevent spiral of death
+        const clamped_dt = @min(deltaTime, self.config.max_delta_time);
+        self.accumulated_time += clamped_dt;
+
+        // Fixed timestep physics simulation
+        while (self.accumulated_time >= self.config.physics_time_step) {
+            self.stepPhysics(self.config.physics_time_step);
+            self.accumulated_time -= self.config.physics_time_step;
+            self.step_count += 1;
+        }
+    }
+
+    fn stepPhysics(self: *Self, dt: f32) void {
+        // Apply gravity and integrate forces
         for (self.bodies.items) |*body| {
             if (body.isDynamic()) {
-                body.applyForce(Vector2.scale(self.config.gravity, body.kind.Dynamic.mass));
+                // Apply gravity
+                const gravity_force = Vector2{
+                    .x = self.config.gravity.x * body.kind.Dynamic.mass,
+                    .y = self.config.gravity.y * body.kind.Dynamic.mass,
+                };
+                body.applyForce(gravity_force);
             }
-            body.update(deltaTime);
+        }
+
+        // Velocity iterations - integrate velocities
+        for (0..self.config.velocity_iterations) |_| {
+            for (self.bodies.items) |*body| {
+                if (body.isDynamic()) {
+                    body.update(dt);
+                }
+            }
         }
 
         // Collision detection and response
-        // This is a simplified N-squared loop. For more objects, a broadphase would be needed.
+        self.detectAndResolveCollisions();
+
+        // Position iterations - correct positions
+        for (0..self.config.position_iterations) |_| {
+            // Position correction would go here
+            // For now, we'll just ensure bodies are updated
+            for (self.bodies.items) |*body| {
+                if (body.isDynamic()) {
+                    // Additional position correction could be applied here
+                    // TODO: Implement position correction using config.baumgarte_factor
+                }
+            }
+        }
+
+        // Handle sleeping bodies if enabled
+        if (self.config.allow_sleeping) {
+            self.updateSleepingBodies(dt);
+        }
+    }
+
+    fn detectAndResolveCollisions(self: *Self) void {
+        // Broadphase: O(n²) collision detection
+        // In a real engine, you'd use spatial partitioning (quadtree, spatial hash, etc.)
         var i: usize = 0;
         while (i < self.bodies.items.len) : (i += 1) {
             var body1_ptr = &self.bodies.items[i];
@@ -45,27 +98,58 @@ pub const PhysicsWorld = struct {
             while (j < self.bodies.items.len) : (j += 1) {
                 var body2_ptr = &self.bodies.items[j];
 
-                // Optimization: Skip collision between two static bodies
+                // Skip collision between two static bodies
                 if (!body1_ptr.isDynamic() and !body2_ptr.isDynamic()) {
                     continue;
                 }
 
+                // Broadphase: AABB collision
                 const aabb1 = body1_ptr.aabb();
                 const aabb2 = body2_ptr.aabb();
 
                 if (aabb1.intersects(aabb2)) {
-                    // AABBs overlap, proceed to narrow phase
-                    // std.debug.print("AABB overlap between body {any} and {any}\n", .{body1_ptr.id, body2_ptr.id});
+                    // Narrowphase collision detection would go here
+                    // For now, we'll just log potential collisions
+                    if (self.config.debug_draw_contacts) {
+                        std.debug.print("Potential collision between body {} and {}\n", .{ body1_ptr.id, body2_ptr.id });
+                    }
 
-                    // TODO: Implement checkShapesCollide and manifold generation
-                    // if (checkShapesCollide(body1_ptr, body2_ptr)) |manifold| {
-                    //     // Collision occurred!
-                    //     std.debug.print("Precise collision between body {any} and {any}\n", .{body1_ptr.id, body2_ptr.id});
-                    //     // TODO: Implement resolveCollision(body1_ptr, body2_ptr, manifold);
+                    // TODO: Implement detailed collision detection and response
+                    // This would include:
+                    // - Shape-specific collision checks (circle-circle, rect-rect, circle-rect)
+                    // - Contact manifold generation
+                    // - Impulse resolution
+                    // - Position correction using baumgarte_factor
+                }
+            }
+        }
+    }
+
+    fn updateSleepingBodies(self: *Self, dt: f32) void {
+        for (self.bodies.items) |*body| {
+            if (body.isDynamic()) {
+                const velocity_mag = @sqrt(body.kind.Dynamic.velocity.x * body.kind.Dynamic.velocity.x +
+                    body.kind.Dynamic.velocity.y * body.kind.Dynamic.velocity.y);
+
+                if (velocity_mag < self.config.sleep_velocity_threshold) {
+                    // Body is slow enough to potentially sleep
+                    // In a full implementation, you'd track sleep time per body
+                    _ = dt; // Would use dt to track sleep time
+                    // body.sleep_time += dt;
+                    // if (body.sleep_time > self.config.sleep_time_threshold) {
+                    //     body.is_sleeping = true;
                     // }
                 }
             }
         }
+    }
+
+    pub fn getPhysicsTimeStep(self: *const Self) f32 {
+        return self.config.physics_time_step;
+    }
+
+    pub fn getStepCount(self: *const Self) u64 {
+        return self.step_count;
     }
 
     pub fn addBody(self: *Self, body: Body) !usize {
