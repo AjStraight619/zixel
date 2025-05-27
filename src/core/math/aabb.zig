@@ -1,18 +1,19 @@
-const Vector2 = @import("vector2.zig").Vector2;
+const rl = @import("raylib");
+const Vector2 = rl.Vector2;
 
 pub const AABB = struct {
     min: Vector2, // bottom-left or top-left
     max: Vector2, // top-right or bottom-right
 
     /// Create an AABB from min and max points
-    pub fn fromMinMax(min: Vector2, max: Vector2) AABB {
-        return AABB{ .min = min, .max = max };
+    pub fn fromMinMax(min_val: Vector2, max_val: Vector2) AABB {
+        return AABB{ .min = min_val, .max = max_val };
     }
 
     /// Create an AABB from center and half-size
     pub fn fromCenterHalfSize(center_point: Vector2, half_size: Vector2) AABB {
         return AABB{
-            .min = center_point.sub(half_size),
+            .min = center_point.subtract(half_size),
             .max = center_point.add(half_size),
         };
     }
@@ -32,8 +33,8 @@ pub const AABB = struct {
     /// Get the center of the AABB
     pub fn center(self: AABB) Vector2 {
         return Vector2.init(
-            (self.min.x + self.max.x) / 2,
-            (self.min.y + self.max.y) / 2,
+            (self.min.x + self.max.x) / 2.0,
+            (self.min.y + self.max.y) / 2.0,
         );
     }
 
