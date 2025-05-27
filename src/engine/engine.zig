@@ -13,9 +13,9 @@ const EngineConfig = struct {
     load_default_keybinds: bool = true,
 };
 
-pub const HandleInputFn = fn (engine: *Engine, allocator: std.mem.Allocator) anyerror!void;
-pub const UpdateFn = fn (engine: *Engine, allocator: std.mem.Allocator, dt: f32) anyerror!void;
-pub const RenderFn = fn (engine: *Engine, allocator: std.mem.Allocator) anyerror!void;
+pub const HandleInputFn = *const fn (engine: *Engine, allocator: std.mem.Allocator) anyerror!void;
+pub const UpdateFn = *const fn (engine: *Engine, allocator: std.mem.Allocator, dt: f32) anyerror!void;
+pub const RenderFn = *const fn (engine: *Engine, allocator: std.mem.Allocator) anyerror!void;
 
 pub const Engine = struct {
     allocator: std.mem.Allocator,
@@ -23,17 +23,21 @@ pub const Engine = struct {
     physics: PhysicsWorld,
     keybind_manager: keybinds.KeybindManager,
     target_fps: u32,
+
+    // Use optional function pointers for callback fields
     handle_input: ?HandleInputFn = null,
     update_game: ?UpdateFn = null,
     render_game: ?RenderFn = null,
 
     const Self = @This();
 
-    pub fn init(alloc: std.mem.Allocator, comptime config: EngineConfig) !Self {
+    pub fn init(alloc: std.mem.Allocator, config: EngineConfig) !Self {
         var kb_manager = keybinds.KeybindManager.init(alloc);
         if (config.load_default_keybinds) {
             try kb_manager.loadDefaultBindings();
         }
+
+        rl.setTargetFPS(@intCast(config.target_fps));
 
         return Self{
             .allocator = alloc,
@@ -53,16 +57,16 @@ pub const Engine = struct {
         self.keybind_manager.deinit();
     }
 
-    // New methods to set the callbacks
-    pub fn setHandleInputFn(self: *Self, comptime func: HandleInputFn) void {
+    // Setter functions now accept function pointers
+    pub fn setHandleInputFn(self: *Self, func: HandleInputFn) void {
         self.handle_input = func;
     }
 
-    pub fn setUpdateFn(self: *Self, comptime func: UpdateFn) void {
+    pub fn setUpdateFn(self: *Self, func: UpdateFn) void {
         self.update_game = func;
     }
 
-    pub fn setRenderFn(self: *Self, comptime func: RenderFn) void {
+    pub fn setRenderFn(self: *Self, func: RenderFn) void {
         self.render_game = func;
     }
 
@@ -78,54 +82,60 @@ pub const Engine = struct {
 
     pub fn run(self: *Self) !void {
         var accumulator: f32 = 0.0;
-        const fixed_dt: f32 = if (self.target_fps == 0) (1.0 / 60.0) else (1.0 / @as(f32, @floatFromInt(self.target_fps)));
+        const physics_dt = self.physics.getPhysicsTimeStep();
 
         while (!rl.windowShouldClose()) {
-            if (self.handle_input) |input_fn| {
-                try input_fn(self, self.allocator);
+            if (self.handle_input) |input_fn_ptr| {
+                try input_fn_ptr(self, self.allocator);
             }
 
-            accumulator += rl.getFrameTime();
+            const frame_time = rl.getFrameTime();
+            accumulator += frame_time;
 
-            while (accumulator >= fixed_dt) {
-                // Update physics
-                self.physics.update(fixed_dt);
-
-                // Update game logic (if callback is set)
-                if (self.update_game) |update_fn| {
-                    try update_fn(self, self.allocator, fixed_dt);
+            // Physics simulation with fixed timestep
+            while (accumulator >= physics_dt) {
+                self.physics.update(physics_dt);
+                if (self.update_game) |update_fn_ptr| {
+                    try update_fn_ptr(self, self.allocator, physics_dt);
                 }
-                accumulator -= fixed_dt;
+                accumulator -= physics_dt;
             }
 
-            // 3. Render
+            // Rendering
             rl.beginDrawing();
             rl.clearBackground(rl.Color.white);
-
-            // Render game (if callback is set)
-            if (self.render_game) |render_fn| {
-                try render_fn(self, self.allocator);
+            if (self.render_game) |render_fn_ptr| {
+                try render_fn_ptr(self, self.allocator);
             }
-
             rl.endDrawing();
         }
-    }
-
-    // --- Input Action Wrappers ---
-    pub fn isActionPressed(self: *const Self, action: keybinds.GameAction) bool {
-        return self.keybind_manager.isActionPressed(action);
-    }
-
-    pub fn isActionJustPressed(self: *const Self, action: keybinds.GameAction) bool {
-        return self.keybind_manager.isActionJustPressed(action);
-    }
-
-    pub fn isActionReleased(self: *const Self, action: keybinds.GameAction) bool {
-        return self.keybind_manager.isActionReleased(action);
     }
 
     pub fn getKeybindManager(self: *Self) *keybinds.KeybindManager {
         return &self.keybind_manager;
     }
-    // --- End Input Action Wrappers ---
+
+    // Physics configuration methods
+    pub fn getPhysicsWorld(self: *Self) *PhysicsWorld {
+        return &self.physics;
+    }
+
+    pub fn setGravity(self: *Self, gravity: rl.Vector2) void {
+        self.physics.config.gravity = gravity;
+        self.physics.gravity = gravity;
+    }
+
+    pub fn getGravity(self: *const Self) rl.Vector2 {
+        return self.physics.gravity;
+    }
+
+    pub fn enableDebugDrawing(self: *Self, aabb: bool, contacts: bool, joints: bool) void {
+        self.physics.config.debug_draw_aabb = aabb;
+        self.physics.config.debug_draw_contacts = contacts;
+        self.physics.config.debug_draw_joints = joints;
+    }
+
+    pub fn getPhysicsStepCount(self: *const Self) u64 {
+        return self.physics.getStepCount();
+    }
 };
