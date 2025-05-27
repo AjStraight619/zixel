@@ -11,8 +11,8 @@ pub const StaticBodyOptions = struct {
 
 pub const DynamicBodyOptions = struct {
     rotation: f32 = 0.0,
-    velocity: Vector2 = Vector2.zero(),
-    acceleration: Vector2 = Vector2.zero(),
+    velocity: Vector2 = Vector2{ .x = 0.0, .y = 0.0 },
+    acceleration: Vector2 = Vector2{ .x = 0.0, .y = 0.0 },
     angular_velocity: f32 = 0.0,
     angular_acceleration: f32 = 0.0,
     mass: f32 = 1.0,
@@ -62,10 +62,10 @@ pub const Body = struct {
     }
 
     pub fn aabb(self: *const Body) AABB {
-        switch (self.kind) {
+        return switch (self.kind) {
             .Dynamic => |dyn_body| dyn_body.aabb(),
             .Static => |stat_body| stat_body.aabb(),
-        }
+        };
     }
 
     pub fn isDynamic(self: Body) bool {
@@ -102,8 +102,8 @@ pub const DynamicBody = struct {
     shape: PhysicsShape,
     position: Vector2,
     rotation: f32 = 0.0,
-    velocity: Vector2 = Vector2.zero(),
-    acceleration: Vector2 = Vector2.zero(),
+    velocity: Vector2 = Vector2{ .x = 0.0, .y = 0.0 },
+    acceleration: Vector2 = Vector2{ .x = 0.0, .y = 0.0 },
     angular_velocity: f32 = 0.0,
     angular_acceleration: f32 = 0.0,
     mass: f32 = 1.0,
@@ -144,7 +144,7 @@ pub const DynamicBody = struct {
     pub fn update(self: *DynamicBody, deltaTime: f32) void {
         self.velocity = self.velocity.add(self.acceleration.scale(deltaTime));
         self.position = self.position.add(self.velocity.scale(deltaTime));
-        self.acceleration = Vector2.zero();
+        self.acceleration = Vector2{ .x = 0.0, .y = 0.0 };
     }
 };
 
