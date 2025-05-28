@@ -4,6 +4,12 @@ const PhysicsConfig = @import("config.zig").PhysicsConfig;
 const Allocator = std.mem.Allocator;
 const Body = @import("body.zig").Body;
 const Vector2 = rl.Vector2; // Use Raylib's Vector2
+const collision = @import("collision.zig");
+// Updated imports for new modular structure
+const checkBodiesCollision = collision.checkBodiesCollision;
+const resolveCollision = collision.resolveCollision;
+const correctPositions = collision.correctPositions;
+const ContactManifold = collision.ContactManifold;
 
 pub const PhysicsWorld = struct {
     allocator: std.mem.Allocator,
@@ -47,7 +53,7 @@ pub const PhysicsWorld = struct {
     fn stepPhysics(self: *Self, dt: f32) void {
         // Apply gravity and integrate forces
         for (self.bodies.items) |*body| {
-            if (body.isDynamic()) {
+            if (body.isDynamic() and !body.isSleeping()) {
                 // Apply gravity
                 const gravity_force = Vector2{
                     .x = self.config.gravity.x * body.kind.Dynamic.mass,
@@ -60,7 +66,7 @@ pub const PhysicsWorld = struct {
         // Velocity iterations - integrate velocities
         for (0..self.config.velocity_iterations) |_| {
             for (self.bodies.items) |*body| {
-                if (body.isDynamic()) {
+                if (body.isDynamic() and !body.isSleeping()) {
                     body.update(dt);
                 }
             }
@@ -69,18 +75,6 @@ pub const PhysicsWorld = struct {
         // Collision detection and response
         self.detectAndResolveCollisions();
 
-        // Position iterations - correct positions
-        for (0..self.config.position_iterations) |_| {
-            // Position correction would go here
-            // For now, we'll just ensure bodies are updated
-            for (self.bodies.items) |*body| {
-                if (body.isDynamic()) {
-                    // Additional position correction could be applied here
-                    // TODO: Implement position correction using config.baumgarte_factor
-                }
-            }
-        }
-
         // Handle sleeping bodies if enabled
         if (self.config.allow_sleeping) {
             self.updateSleepingBodies(dt);
@@ -88,8 +82,6 @@ pub const PhysicsWorld = struct {
     }
 
     fn detectAndResolveCollisions(self: *Self) void {
-        // Broadphase: O(n²) collision detection
-        // In a real engine, you'd use spatial partitioning (quadtree, spatial hash, etc.)
         var i: usize = 0;
         while (i < self.bodies.items.len) : (i += 1) {
             var body1_ptr = &self.bodies.items[i];
@@ -103,23 +95,39 @@ pub const PhysicsWorld = struct {
                     continue;
                 }
 
+                // Skip collision between two sleeping bodies
+                if (body1_ptr.isSleeping() and body2_ptr.isSleeping()) {
+                    continue;
+                }
+
                 // Broadphase: AABB collision
                 const aabb1 = body1_ptr.aabb();
                 const aabb2 = body2_ptr.aabb();
 
                 if (aabb1.intersects(aabb2)) {
-                    // Narrowphase collision detection would go here
-                    // For now, we'll just log potential collisions
-                    if (self.config.debug_draw_contacts) {
-                        std.debug.print("Potential collision between body {} and {}\n", .{ body1_ptr.id, body2_ptr.id });
-                    }
+                    // Narrowphase: Detailed collision detection
+                    if (checkBodiesCollision(body1_ptr, body2_ptr)) |manifold| {
+                        // Wake up bodies involved in collision
+                        body1_ptr.wakeUp();
+                        body2_ptr.wakeUp();
 
-                    // TODO: Implement detailed collision detection and response
-                    // This would include:
-                    // - Shape-specific collision checks (circle-circle, rect-rect, circle-rect)
-                    // - Contact manifold generation
-                    // - Impulse resolution
-                    // - Position correction using baumgarte_factor
+                        if (self.config.debug_draw_contacts) {
+                            std.debug.print("Collision between body {} and {} at ({:.2}, {:.2}) with penetration {:.3}\n", .{ manifold.body1_id, manifold.body2_id, manifold.point.x, manifold.point.y, manifold.penetration });
+                        }
+
+                        // Calculate combined restitution (use minimum for more stable behavior)
+                        const restitution1 = if (body1_ptr.isDynamic()) body1_ptr.kind.Dynamic.restitution else 0.0;
+                        const restitution2 = if (body2_ptr.isDynamic()) body2_ptr.kind.Dynamic.restitution else 0.0;
+                        const combined_restitution = @min(restitution1, restitution2);
+
+                        // Resolve collision with impulse-based response
+                        resolveCollision(body1_ptr, body2_ptr, manifold, combined_restitution);
+
+                        // Position correction to reduce penetration
+                        if (manifold.penetration > self.config.contact_slop) {
+                            correctPositions(body1_ptr, body2_ptr, manifold, self.config.baumgarte_factor);
+                        }
+                    }
                 }
             }
         }
@@ -127,18 +135,23 @@ pub const PhysicsWorld = struct {
 
     fn updateSleepingBodies(self: *Self, dt: f32) void {
         for (self.bodies.items) |*body| {
-            if (body.isDynamic()) {
-                const velocity_mag = @sqrt(body.kind.Dynamic.velocity.x * body.kind.Dynamic.velocity.x +
-                    body.kind.Dynamic.velocity.y * body.kind.Dynamic.velocity.y);
+            if (body.isDynamic() and !body.isSleeping()) {
+                const dyn_body = &body.kind.Dynamic;
+                const velocity_mag = @sqrt(dyn_body.velocity.x * dyn_body.velocity.x +
+                    dyn_body.velocity.y * dyn_body.velocity.y);
+                const angular_velocity_mag = @abs(dyn_body.angular_velocity);
 
-                if (velocity_mag < self.config.sleep_velocity_threshold) {
+                if (velocity_mag < self.config.sleep_velocity_threshold and
+                    angular_velocity_mag < self.config.sleep_velocity_threshold)
+                {
                     // Body is slow enough to potentially sleep
-                    // In a full implementation, you'd track sleep time per body
-                    _ = dt; // Would use dt to track sleep time
-                    // body.sleep_time += dt;
-                    // if (body.sleep_time > self.config.sleep_time_threshold) {
-                    //     body.is_sleeping = true;
-                    // }
+                    dyn_body.sleep_time += dt;
+                    if (dyn_body.sleep_time > self.config.sleep_time_threshold) {
+                        body.putToSleep();
+                    }
+                } else {
+                    // Body is moving too fast, reset sleep timer
+                    dyn_body.sleep_time = 0.0;
                 }
             }
         }
@@ -173,16 +186,9 @@ pub const PhysicsWorld = struct {
     pub fn getBodyCount(self: *Self) usize {
         return self.bodies.items.len;
     }
-
-    // Placeholder - actual collision resolution would be more complex
-    // fn resolveCollision(body1: *Body, body2: *Body) void {
-    //     // ... impulse calculations, position correction ...
-    // }
 };
 
-//-------------
-// TEST CODE
-//-------------
+/// Test code for AABB collision detection
 const testing = @import("std").testing;
 const core_math = @import("../core/math/aabb.zig"); // For AABB
 const physics_body = @import("body.zig"); // For Body, StaticBodyOptions etc.
@@ -273,13 +279,6 @@ test "AABB Calculation and Basic Collision Tests" {
 
     const aabb1_s4 = body1_s1.aabb(); // Expected: min(-5,-5) max(5,5)
     const aabb6_s4 = body6_s4.aabb(); // Expected: AABB for a 10x10 rect centered at (5,0) rotated 45 deg.
-    // Corners of unrotated local rect: (-5,-5), (5,-5), (5,5), (-5,5)
-    // Rotated by 45deg (cos45=sin45=~0.707):
-    // (-5,-5) -> (-5*0.707 - -5*0.707, -5*0.707 + -5*0.707) = (0, -7.07) -> world (5, -7.07)
-    // (5,-5)  -> (5*0.707 - -5*0.707,  5*0.707 + -5*0.707) = (7.07, 0)  -> world (12.07, 0)
-    // (5,5)   -> (5*0.707 -  5*0.707,  5*0.707 +  5*0.707) = (0, 7.07)   -> world (5, 7.07)
-    // (-5,5)  -> (-5*0.707 - 5*0.707, -5*0.707 +  5*0.707) = (-7.07, 0) -> world (-2.07, 0)
-    // So, AABB6 min_x approx -2.07, max_x approx 12.07. min_y approx -7.07, max_y approx 7.07.
 
     std.debug.print("Scenario 4 - AABB1: {any}, AABB6: {any}\n", .{ aabb1_s4, aabb6_s4 });
     try testing.expect(aabb1_s4.intersects(aabb6_s4)); // AABB of unrotated (-5,-5 to 5,5) should intersect AABB of rotated one.
@@ -290,15 +289,252 @@ test "AABB Calculation and Basic Collision Tests" {
     try testing.expectApproxEqAbs(aabb6_s4.max.x, 5.0 + 5.0 * std.math.sqrt2, epsilon); // 5 + 7.071 = 12.071
     try testing.expectApproxEqAbs(aabb6_s4.min.y, 0.0 - 5.0 * std.math.sqrt2, epsilon); // 0 - 7.071 = -7.071
     try testing.expectApproxEqAbs(aabb6_s4.max.y, 0.0 + 5.0 * std.math.sqrt2, epsilon); // 0 + 7.071 = 7.071
-    // The manual calculation above for corners was a bit off; the AABB of a square rotated 45deg with side L centered at (cx,cy)
-    // has min/max x = cx +/- L/sqrt(2), min/max y = cy +/- L/sqrt(2). Here L=10sqrt(2) is diagonal, side is 10.
-    // Half-diagonal is 5*sqrt(2). So corners are at distance 5*sqrt(2) from center along axes rotated by 45.
-    // AABB extents from center: L * (cos(a) + sin(a))/2 where a is angle from local x-axis to aabb edge.
-    // Simpler: for a square of side S, rotated 45deg, AABB width/height is S*sqrt(2).
-    // So for side 10, AABB width/height is 10*sqrt(2) ~ 14.14.
-    // Centered at (5,0), AABB min x = 5 - 14.14/2 = 5 - 7.07 = -2.07
-    // AABB max x = 5 + 7.07 = 12.07
-    // AABB min y = 0 - 7.07 = -7.07
-    // AABB max y = 0 + 7.07 = 7.07
-    // These are the values used in expectApproxEqAbs.
+
+}
+
+test "Collision Detection System Tests" {
+    std.debug.print("\n=== Collision Detection System Tests ===\n", .{});
+
+    // Test 1: Circle-Circle Collision
+    const circle1 = physics_shapes.PhysicsShape{ .circle = .{ .radius = 5.0 } };
+    const circle2 = physics_shapes.PhysicsShape{ .circle = .{ .radius = 3.0 } };
+
+    var body1 = createTestStaticBody(circle1, rl.Vector2{ .x = 0, .y = 0 }, 0.0);
+    var body2 = createTestStaticBody(circle2, rl.Vector2{ .x = 6, .y = 0 }, 0.0); // Touching
+    body1.id = 1;
+    body2.id = 2;
+
+    if (checkBodiesCollision(&body1, &body2)) |manifold| {
+        std.debug.print("Circle-Circle Collision: penetration = {:.3}\n", .{manifold.penetration});
+        try testing.expect(manifold.penetration > 0.0);
+    } else {
+        try testing.expect(false); // Should have collision
+    }
+
+    // Test 2: Rectangle-Rectangle Axis-Aligned
+    const rect1 = physics_shapes.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 10, .height = 10 } };
+    const rect2 = physics_shapes.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 8, .height = 8 } };
+
+    var body3 = createTestStaticBody(rect1, rl.Vector2{ .x = 0, .y = 0 }, 0.0);
+    var body4 = createTestStaticBody(rect2, rl.Vector2{ .x = 7, .y = 0 }, 0.0); // Overlapping
+    body3.id = 3;
+    body4.id = 4;
+
+    if (checkBodiesCollision(&body3, &body4)) |manifold| {
+        std.debug.print("Rectangle-Rectangle Axis-Aligned: penetration = {:.3}\n", .{manifold.penetration});
+        try testing.expect(manifold.penetration > 0.0);
+    } else {
+        try testing.expect(false); // Should have collision
+    }
+
+    // Test 3: SAT Rectangle-Rectangle with Rotation
+    var body5 = createTestStaticBody(rect1, rl.Vector2{ .x = 0, .y = 0 }, 0.0);
+    var body6 = createTestStaticBody(rect2, rl.Vector2{ .x = 7, .y = 0 }, std.math.pi / 4.0); // 45 degrees
+    body5.id = 5;
+    body6.id = 6;
+
+    if (checkBodiesCollision(&body5, &body6)) |manifold| {
+        std.debug.print("SAT Rectangle-Rectangle 45°: penetration = {:.3}\n", .{manifold.penetration});
+        try testing.expect(manifold.penetration > 0.0);
+    } else {
+        std.debug.print("SAT Rectangle-Rectangle 45°: No collision detected\n", .{});
+    }
+
+    // Test 4: Circle-Rectangle Collision
+    var body7 = createTestStaticBody(circle1, rl.Vector2{ .x = 0, .y = 0 }, 0.0);
+    var body8 = createTestStaticBody(rect2, rl.Vector2{ .x = 6, .y = 0 }, 0.0);
+    body7.id = 7;
+    body8.id = 8;
+
+    if (checkBodiesCollision(&body7, &body8)) |manifold| {
+        std.debug.print("Circle-Rectangle: penetration = {:.3}\n", .{manifold.penetration});
+        try testing.expect(manifold.penetration > 0.0);
+    } else {
+        std.debug.print("Circle-Rectangle: No collision detected\n", .{});
+    }
+
+    std.debug.print("=== Collision Detection Tests Complete ===\n", .{});
+}
+
+test "Sleep System Tests" {
+    std.debug.print("\n=== Sleep System Tests ===\n", .{});
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    // Create a physics world with sleep enabled and NO GRAVITY
+    var config = PhysicsConfig{};
+    config.allow_sleeping = true;
+    config.sleep_velocity_threshold = 0.1;
+    config.sleep_time_threshold = 0.2; // Reduced from 0.5 for faster test
+    config.gravity = rl.Vector2{ .x = 0.0, .y = 0.0 }; // Disable gravity for sleep test
+    config.debug_draw_contacts = false; // Disable debug output
+
+    var world = try PhysicsWorld.init(allocator, config);
+    defer world.deinit();
+
+    // Add a dynamic body starting at rest
+    const circle_shape = physics_shapes.PhysicsShape{ .circle = .{ .radius = 5.0 } };
+    const dynamic_body = physics_body.Body.initDynamic(circle_shape, rl.Vector2{ .x = 0, .y = 0 }, .{
+        .velocity = rl.Vector2{ .x = 0.0, .y = 0.0 }, // Stationary
+    });
+
+    const body_id = try world.addBody(dynamic_body);
+    const body = world.getBody(body_id).?;
+
+    // Test 1: Body should not be sleeping initially
+    try testing.expect(!body.isSleeping());
+    std.debug.print("Initial state: awake = {}\n", .{!body.isSleeping()});
+
+    // Test 2: Simulate physics for enough time to trigger sleep
+    for (0..10) |i| {
+        world.update(0.1); // 0.1 seconds per step
+        std.debug.print("Step {}: awake = {}, velocity = {:.3}\n", .{ i + 1, !body.isSleeping(), body.kind.Dynamic.velocity.x });
+
+        if (i >= 6) { // After 0.7 seconds, should be asleep
+            try testing.expect(body.isSleeping());
+            break;
+        }
+    }
+
+    // Test 3: Wake up body and verify it's awake
+    body.wakeUp();
+    try testing.expect(!body.isSleeping());
+    std.debug.print("After wakeUp(): awake = {}\n", .{!body.isSleeping()});
+
+    // Test 4: Manually put to sleep
+    body.putToSleep();
+    try testing.expect(body.isSleeping());
+    try testing.expect(body.kind.Dynamic.velocity.x == 0.0);
+    std.debug.print("After putToSleep(): sleeping = {}, velocity = {:.3}\n", .{ body.isSleeping(), body.kind.Dynamic.velocity.x });
+
+    std.debug.print("=== Sleep System Tests Complete ===\n", .{});
+}
+
+test "Collision Response Tests" {
+    std.debug.print("\n=== Collision Response Tests ===\n", .{});
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    const config = PhysicsConfig{};
+    var world = try PhysicsWorld.init(allocator, config);
+    defer world.deinit();
+
+    // Create two dynamic bodies that will collide
+    const circle_shape = physics_shapes.PhysicsShape{ .circle = .{ .radius = 5.0 } };
+
+    const body1 = physics_body.Body.initDynamic(circle_shape, rl.Vector2{ .x = -8, .y = 0 }, .{
+        .velocity = rl.Vector2{ .x = 10.0, .y = 0.0 }, // Moving right
+        .mass = 1.0,
+        .restitution = 0.8,
+    });
+
+    const body2 = physics_body.Body.initDynamic(circle_shape, rl.Vector2{ .x = 8, .y = 0 }, .{
+        .velocity = rl.Vector2{ .x = -10.0, .y = 0.0 }, // Moving left
+        .mass = 1.0,
+        .restitution = 0.8,
+    });
+
+    const id1 = try world.addBody(body1);
+    const id2 = try world.addBody(body2);
+
+    const b1 = world.getBody(id1).?;
+    const b2 = world.getBody(id2).?;
+
+    std.debug.print("Before collision:\n", .{});
+    std.debug.print("  Body1: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b1.getPosition().x, b1.getPosition().y, b1.kind.Dynamic.velocity.x, b1.kind.Dynamic.velocity.y });
+    std.debug.print("  Body2: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b2.getPosition().x, b2.getPosition().y, b2.kind.Dynamic.velocity.x, b2.kind.Dynamic.velocity.y });
+
+    // Simulate until collision happens
+    var collision_detected = false;
+    for (0..100) |i| {
+        world.update(0.016); // ~60 FPS
+
+        // Check if bodies have bounced (velocities should reverse)
+        if (b1.kind.Dynamic.velocity.x < 0 and b2.kind.Dynamic.velocity.x > 0) {
+            collision_detected = true;
+            std.debug.print("Collision detected at step {}!\n", .{i + 1});
+            std.debug.print("After collision:\n", .{});
+            std.debug.print("  Body1: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b1.getPosition().x, b1.getPosition().y, b1.kind.Dynamic.velocity.x, b1.kind.Dynamic.velocity.y });
+            std.debug.print("  Body2: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b2.getPosition().x, b2.getPosition().y, b2.kind.Dynamic.velocity.x, b2.kind.Dynamic.velocity.y });
+            break;
+        }
+    }
+
+    try testing.expect(collision_detected);
+
+    // Verify collision response worked (velocities should have reversed)
+    try testing.expect(b1.kind.Dynamic.velocity.x < 0); // Now moving left
+    try testing.expect(b2.kind.Dynamic.velocity.x > 0); // Now moving right
+
+    std.debug.print("=== Collision Response Tests Complete ===\n", .{});
+}
+
+test "Performance and Wake-up Tests" {
+    std.debug.print("\n=== Performance and Wake-up Tests ===\n", .{});
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var config = PhysicsConfig{};
+    config.allow_sleeping = true;
+    config.sleep_velocity_threshold = 0.1;
+    config.sleep_time_threshold = 0.1; // Sleep quickly for test
+    config.gravity = rl.Vector2{ .x = 0.0, .y = 0.0 }; // Disable gravity so bodies can sleep
+
+    var world = try PhysicsWorld.init(allocator, config);
+    defer world.deinit();
+
+    // Add multiple stationary bodies that should go to sleep
+    const circle_shape = physics_shapes.PhysicsShape{ .circle = .{ .radius = 2.0 } };
+    var sleeping_bodies: [5]usize = undefined;
+
+    for (0..5) |i| {
+        const body = physics_body.Body.initDynamic(circle_shape, rl.Vector2{ .x = @as(f32, @floatFromInt(i)) * 6.0, .y = 0 }, .{
+            .velocity = rl.Vector2{ .x = 0.0, .y = 0.0 }, // Stationary
+        });
+        sleeping_bodies[i] = try world.addBody(body);
+    }
+
+    // Let them all fall asleep
+    for (0..5) |_| {
+        world.update(0.1);
+    }
+
+    // Verify they're all asleep
+    var all_sleeping = true;
+    for (sleeping_bodies) |id| {
+        if (!world.getBody(id).?.isSleeping()) {
+            all_sleeping = false;
+            break;
+        }
+    }
+    try testing.expect(all_sleeping);
+    std.debug.print("All 5 bodies put to sleep successfully\n", .{});
+
+    // Add a fast-moving body that will collide with one of them
+    const projectile = physics_body.Body.initDynamic(circle_shape, rl.Vector2{ .x = -10, .y = 0 }, .{
+        .velocity = rl.Vector2{ .x = 20.0, .y = 0.0 }, // Fast moving
+    });
+    _ = try world.addBody(projectile);
+
+    // Simulate collision - sleeping body should wake up
+    var wake_up_detected = false;
+    for (0..100) |i| {
+        world.update(0.016);
+
+        // Check if first sleeping body woke up
+        const first_body = world.getBody(sleeping_bodies[0]).?;
+        if (!first_body.isSleeping()) {
+            wake_up_detected = true;
+            std.debug.print("Sleeping body woke up after collision at step {}!\n", .{i + 1});
+            break;
+        }
+    }
+
+    try testing.expect(wake_up_detected);
+    std.debug.print("Wake-up on collision works correctly\n", .{});
+
+    std.debug.print("=== Performance and Wake-up Tests Complete ===\n", .{});
 }

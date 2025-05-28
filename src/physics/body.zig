@@ -74,6 +74,56 @@ pub const Body = struct {
             .Static => false,
         };
     }
+
+    pub fn getShape(self: *const Body) PhysicsShape {
+        return switch (self.kind) {
+            .Dynamic => |dyn_body| dyn_body.shape,
+            .Static => |stat_body| stat_body.shape,
+        };
+    }
+
+    pub fn getPosition(self: *const Body) Vector2 {
+        return switch (self.kind) {
+            .Dynamic => |dyn_body| dyn_body.position,
+            .Static => |stat_body| stat_body.position,
+        };
+    }
+
+    pub fn getRotation(self: *const Body) f32 {
+        return switch (self.kind) {
+            .Dynamic => |dyn_body| dyn_body.rotation,
+            .Static => |stat_body| stat_body.rotation,
+        };
+    }
+
+    // Sleep management
+    pub fn isSleeping(self: *const Body) bool {
+        return switch (self.kind) {
+            .Dynamic => |dyn_body| dyn_body.is_sleeping,
+            .Static => false, // Static bodies are never considered "sleeping"
+        };
+    }
+
+    pub fn wakeUp(self: *Body) void {
+        switch (self.kind) {
+            .Dynamic => |*dyn_body| {
+                dyn_body.is_sleeping = false;
+                dyn_body.sleep_time = 0.0;
+            },
+            .Static => {}, // Static bodies don't need waking
+        }
+    }
+
+    pub fn putToSleep(self: *Body) void {
+        switch (self.kind) {
+            .Dynamic => |*dyn_body| {
+                dyn_body.is_sleeping = true;
+                dyn_body.velocity = Vector2{ .x = 0.0, .y = 0.0 };
+                dyn_body.angular_velocity = 0.0;
+            },
+            .Static => {}, // Static bodies don't sleep
+        }
+    }
 };
 
 pub const StaticBody = struct {
@@ -110,6 +160,10 @@ pub const DynamicBody = struct {
     inertia: f32 = 1.0,
     restitution: f32 = 0.5,
     friction: f32 = 0.5,
+
+    // Sleep state
+    is_sleeping: bool = false,
+    sleep_time: f32 = 0.0,
 
     const Self = @This();
 

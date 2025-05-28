@@ -15,8 +15,8 @@ pub const PhysicsConfig = struct {
 
     // Collision settings
     allow_sleeping: bool = true, // Allow bodies to go to sleep when inactive
-    sleep_time_threshold: f32 = 0.5, // Time before a body can sleep (seconds)
-    sleep_velocity_threshold: f32 = 0.1, // Velocity threshold for sleeping
+    sleep_time_threshold: f32 = 5.0, // Time before a body can sleep (seconds)
+    sleep_velocity_threshold: f32 = 15.0, // Velocity threshold for sleeping
 
     // Contact settings
     contact_slop: f32 = 0.005, // Allowed penetration before position correction
