@@ -82,4 +82,25 @@ pub fn build(b: *std.Build) void {
     const run_advanced = b.addRunArtifact(advanced_exe);
     const run_advanced_step = b.step("run-advanced", "Run the advanced example");
     run_advanced_step.dependOn(&run_advanced.step);
+
+    // Physics Verification Tests
+    const physics_verification_mod = b.createModule(.{
+        .root_source_file = b.path("examples/physics_verification.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    physics_verification_mod.addImport("zig2d", lib_mod);
+    physics_verification_mod.addImport("raylib", raylib);
+    physics_verification_mod.addImport("raygui", raygui);
+
+    const physics_verification_exe = b.addExecutable(.{
+        .name = "physics_verification",
+        .root_module = physics_verification_mod,
+    });
+    b.installArtifact(physics_verification_exe);
+    physics_verification_exe.linkLibrary(raylib_artifact);
+
+    const run_physics_verification = b.addRunArtifact(physics_verification_exe);
+    const run_physics_verification_step = b.step("run-physics-tests", "Run the physics verification tests");
+    run_physics_verification_step.dependOn(&run_physics_verification.step);
 }
