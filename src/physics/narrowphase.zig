@@ -77,7 +77,7 @@ pub const NarrowPhase = struct {
         return Projection{ .min = min_proj, .max = max_proj };
     }
 
-    /// Project a circle onto an axis
+    // Project a circle onto an axis
     fn projectCircle(center: Vector2, radius: f32, axis: Vector2) Projection {
         const center_proj = center.dotProduct(axis);
         return Projection{ .min = center_proj - radius, .max = center_proj + radius };
@@ -306,45 +306,10 @@ pub const NarrowPhase = struct {
         return null;
     }
 
-    /// Circle vs Rectangle collision using raylib - optimized
+    /// Circle vs Rectangle collision using SAT - consistent for all rectangles
     fn checkCircleRectangle(circle: PhysicsShape, circle_pos: Vector2, rect: PhysicsShape, rect_pos: Vector2, rect_rot: f32, id1: usize, id2: usize) ?ContactManifold {
-        // For axis-aligned rectangles, use Raylib directly
-        if (rect_rot == 0.0) {
-            const c = circle.circle;
-            const r = rect.rectangle;
-
-            const rect_raylib = rl.Rectangle{
-                .x = rect_pos.x - r.width / 2.0,
-                .y = rect_pos.y - r.height / 2.0,
-                .width = r.width,
-                .height = r.height,
-            };
-
-            // Use raylib for fast collision check
-            if (rl.checkCollisionCircleRec(circle_pos, c.radius, rect_raylib)) {
-                // Calculate collision details manually (raylib doesn't provide getCollisionCircleRec)
-                const closest_x = std.math.clamp(circle_pos.x, rect_raylib.x, rect_raylib.x + rect_raylib.width);
-                const closest_y = std.math.clamp(circle_pos.y, rect_raylib.y, rect_raylib.y + rect_raylib.height);
-
-                const dx = circle_pos.x - closest_x;
-                const dy = circle_pos.y - closest_y;
-                const distance = @sqrt(dx * dx + dy * dy);
-
-                if (distance < c.radius) {
-                    const normal = if (distance > 0.0)
-                        Vector2{ .x = dx / distance, .y = dy / distance }
-                    else
-                        Vector2{ .x = 0.0, .y = -1.0 }; // Default up if inside
-
-                    return ContactManifold.init(Vector2{ .x = closest_x, .y = closest_y }, normal, c.radius - distance, id1, id2);
-                }
-            }
-        } else {
-            // Use SAT for rotated rectangle vs circle collision
-            return satCircleRectangle(circle, circle_pos, rect, rect_pos, rect_rot, id1, id2);
-        }
-
-        return null;
+        // Always use SAT for consistent behavior
+        return satCircleRectangle(circle, circle_pos, rect, rect_pos, rect_rot, id1, id2);
     }
 
     /// Rectangle vs Rectangle collision using raylib - fully optimized
