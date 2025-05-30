@@ -7,6 +7,8 @@ const AABB = @import("../core/math/aabb.zig").AABB;
 
 pub const StaticBodyOptions = struct {
     rotation: f32 = 0.0,
+    restitution: f32 = 0.5, // How bouncy the static surface is
+    friction: f32 = 0.7, // Surface friction (higher = more grip)
 };
 
 pub const DynamicBodyOptions = struct {
@@ -96,6 +98,22 @@ pub const Body = struct {
         };
     }
 
+    /// Get the restitution (bounciness) of this body
+    pub fn getRestitution(self: *const Body) f32 {
+        return switch (self.kind) {
+            .Dynamic => |dyn_body| dyn_body.restitution,
+            .Static => |stat_body| stat_body.restitution,
+        };
+    }
+
+    /// Get the friction of this body
+    pub fn getFriction(self: *const Body) f32 {
+        return switch (self.kind) {
+            .Dynamic => |dyn_body| dyn_body.friction,
+            .Static => |stat_body| stat_body.friction,
+        };
+    }
+
     // Sleep management
     pub fn isSleeping(self: *const Body) bool {
         return switch (self.kind) {
@@ -130,12 +148,16 @@ pub const StaticBody = struct {
     shape: PhysicsShape,
     position: Vector2,
     rotation: f32 = 0.0,
+    restitution: f32 = 0.5,
+    friction: f32 = 0.7,
 
     pub fn init(shape: PhysicsShape, position: Vector2, opts: StaticBodyOptions) StaticBody {
         return StaticBody{
             .shape = shape,
             .position = position,
             .rotation = opts.rotation,
+            .restitution = opts.restitution,
+            .friction = opts.friction,
         };
     }
 

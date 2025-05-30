@@ -10,6 +10,7 @@ const checkBodiesCollision = collision.checkBodiesCollision;
 const resolveCollision = collision.resolveCollision;
 const correctPositions = collision.correctPositions;
 const ContactManifold = collision.ContactManifold;
+const CollisionResponse = @import("response.zig").CollisionResponse;
 
 pub const PhysicsWorld = struct {
     allocator: std.mem.Allocator,
@@ -24,7 +25,7 @@ pub const PhysicsWorld = struct {
 
     const Self = @This();
 
-    pub fn init(alloc: std.mem.Allocator, config: PhysicsConfig) !Self {
+    pub fn init(alloc: std.mem.Allocator, config: PhysicsConfig) Self {
         return Self{
             .allocator = alloc,
             .bodies = std.ArrayList(Body).init(alloc),
@@ -115,13 +116,14 @@ pub const PhysicsWorld = struct {
                             std.debug.print("Collision between body {} and {} at ({:.2}, {:.2}) with penetration {:.3}\n", .{ manifold.body1_id, manifold.body2_id, manifold.point.x, manifold.point.y, manifold.penetration });
                         }
 
-                        // Calculate combined restitution (use minimum for more stable behavior)
-                        const restitution1 = if (body1_ptr.isDynamic()) body1_ptr.kind.Dynamic.restitution else 0.0;
-                        const restitution2 = if (body2_ptr.isDynamic()) body2_ptr.kind.Dynamic.restitution else 0.0;
-                        const combined_restitution = @min(restitution1, restitution2);
+                        // Calculate combined restitution and friction using both bodies' properties
+                        const restitution1 = body1_ptr.getRestitution();
+                        const restitution2 = body2_ptr.getRestitution();
+                        const friction1 = body1_ptr.getFriction();
+                        const friction2 = body2_ptr.getFriction();
 
-                        // Resolve collision with impulse-based response
-                        resolveCollision(body1_ptr, body2_ptr, manifold, combined_restitution);
+                        // Resolve collision with combined material properties (includes friction)
+                        CollisionResponse.resolveCollisionWithMaterials(body1_ptr, body2_ptr, manifold, restitution1, restitution2, friction1, friction2);
 
                         // Position correction to reduce penetration
                         if (manifold.penetration > self.config.contact_slop) {
@@ -185,6 +187,86 @@ pub const PhysicsWorld = struct {
 
     pub fn getBodyCount(self: *Self) usize {
         return self.bodies.items.len;
+    }
+
+    /// Debug rendering - call this in the render loop to draw debug information
+    pub fn debugRender(self: *Self) void {
+        if (self.config.debug_draw_aabb) {
+            self.renderAABBs();
+        }
+
+        if (self.config.debug_draw_contacts) {
+            self.renderContactPoints();
+        }
+
+        if (self.config.debug_draw_joints) {
+            self.renderJoints();
+        }
+    }
+
+    /// Render AABBs (bounding boxes) for all bodies
+    fn renderAABBs(self: *Self) void {
+        for (self.bodies.items) |*body| {
+            const aabb = body.aabb();
+            const width = aabb.max.x - aabb.min.x;
+            const height = aabb.max.y - aabb.min.y;
+
+            // Draw AABB outline
+            rl.drawRectangleLines(@intFromFloat(aabb.min.x), @intFromFloat(aabb.min.y), @intFromFloat(width), @intFromFloat(height), rl.Color.yellow);
+        }
+    }
+
+    /// Render contact points from collisions this frame
+    fn renderContactPoints(self: *Self) void {
+        // We need to store contact points from the collision detection
+        // For now, let's re-detect collisions just for rendering
+        var i: usize = 0;
+        while (i < self.bodies.items.len) : (i += 1) {
+            var body1_ptr = &self.bodies.items[i];
+
+            var j: usize = i + 1;
+            while (j < self.bodies.items.len) : (j += 1) {
+                var body2_ptr = &self.bodies.items[j];
+
+                // Skip collision between two static bodies
+                if (!body1_ptr.isDynamic() and !body2_ptr.isDynamic()) {
+                    continue;
+                }
+
+                // Broadphase: AABB collision
+                const aabb1 = body1_ptr.aabb();
+                const aabb2 = body2_ptr.aabb();
+
+                if (aabb1.intersects(aabb2)) {
+                    // Narrowphase: Check for actual collision
+                    if (checkBodiesCollision(body1_ptr, body2_ptr)) |manifold| {
+                        // Draw contact point
+                        rl.drawCircleV(manifold.point, 3.0, rl.Color.red);
+
+                        // Draw contact normal
+                        const normal_end = Vector2{
+                            .x = manifold.point.x + manifold.normal.x * 20.0,
+                            .y = manifold.point.y + manifold.normal.y * 20.0,
+                        };
+                        rl.drawLineV(manifold.point, normal_end, rl.Color.orange);
+
+                        // Draw penetration depth indicator
+                        const penetration_text = std.fmt.allocPrintZ(std.heap.page_allocator, "{d:.2}", .{manifold.penetration}) catch "?";
+                        defer std.heap.page_allocator.free(penetration_text);
+                        rl.drawText(@ptrCast(penetration_text), @intFromFloat(manifold.point.x + 5), @intFromFloat(manifold.point.y - 10), 12, rl.Color.white);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Render joints (placeholder for when joint system is implemented)
+    fn renderJoints(self: *Self) void {
+        // Joints not implemented yet, but when they are, this would draw:
+        // - Joint anchor points
+        // - Joint limits/constraints
+        // - Joint forces/torques
+        _ = self;
     }
 };
 

@@ -312,68 +312,9 @@ pub const NarrowPhase = struct {
         return satCircleRectangle(circle, circle_pos, rect, rect_pos, rect_rot, id1, id2);
     }
 
-    /// Rectangle vs Rectangle collision using raylib - fully optimized
+    /// Rectangle vs Rectangle collision using SAT - consistent for all rectangles
     fn checkRectangleRectangle(rect1: PhysicsShape, pos1: Vector2, rot1: f32, rect2: PhysicsShape, pos2: Vector2, rot2: f32, id1: usize, id2: usize) ?ContactManifold {
-        // For axis-aligned rectangles, use Raylib functions fully
-        if (rot1 == 0.0 and rot2 == 0.0) {
-            const r1 = rect1.rectangle;
-            const r2 = rect2.rectangle;
-
-            const rect1_raylib = rl.Rectangle{
-                .x = pos1.x - r1.width / 2.0,
-                .y = pos1.y - r1.height / 2.0,
-                .width = r1.width,
-                .height = r1.height,
-            };
-            const rect2_raylib = rl.Rectangle{
-                .x = pos2.x - r2.width / 2.0,
-                .y = pos2.y - r2.height / 2.0,
-                .width = r2.width,
-                .height = r2.height,
-            };
-
-            // Use raylib for collision check
-            if (rl.checkCollisionRecs(rect1_raylib, rect2_raylib)) {
-                // Use raylib to get the actual overlap rectangle!
-                const overlap = rl.getCollisionRec(rect1_raylib, rect2_raylib);
-
-                // Calculate separation direction based on overlap dimensions
-                const center1 = Vector2{ .x = rect1_raylib.x + rect1_raylib.width / 2.0, .y = rect1_raylib.y + rect1_raylib.height / 2.0 };
-                const center2 = Vector2{ .x = rect2_raylib.x + rect2_raylib.width / 2.0, .y = rect2_raylib.y + rect2_raylib.height / 2.0 };
-
-                // Determine separation direction based on which axis has smaller overlap
-                const normal: Vector2 = if (overlap.width < overlap.height) blk: {
-                    // Separate horizontally
-                    if (center1.x < center2.x) {
-                        break :blk Vector2{ .x = -1.0, .y = 0.0 };
-                    } else {
-                        break :blk Vector2{ .x = 1.0, .y = 0.0 };
-                    }
-                } else blk: {
-                    // Separate vertically
-                    if (center1.y < center2.y) {
-                        break :blk Vector2{ .x = 0.0, .y = -1.0 };
-                    } else {
-                        break :blk Vector2{ .x = 0.0, .y = 1.0 };
-                    }
-                };
-
-                // Contact point is center of overlap
-                const contact_point = Vector2{
-                    .x = overlap.x + overlap.width / 2.0,
-                    .y = overlap.y + overlap.height / 2.0,
-                };
-
-                // Penetration is the smaller overlap dimension
-                const penetration = @min(overlap.width, overlap.height);
-
-                return ContactManifold.init(contact_point, normal, penetration, id1, id2);
-            }
-        } else {
-            // Use SAT for rotated rectangle vs rectangle collision
-            return satRectangleRectangle(rect1, pos1, rot1, rect2, pos2, rot2, id1, id2);
-        }
-
-        return null;
+        // Always use SAT for consistent behavior - no raylib optimization
+        return satRectangleRectangle(rect1, pos1, rot1, rect2, pos2, rot2, id1, id2);
     }
 };
