@@ -27,7 +27,39 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(lib);
 
-    // Tests - using dedicated test runner
+    // Helper function to reduce repetition
+    const createExampleExe = struct {
+        fn call(
+            builder: *std.Build,
+            name: []const u8,
+            source_path: []const u8,
+            lib_module: *std.Build.Module,
+            raylib_mod: *std.Build.Module,
+            raygui_mod: *std.Build.Module,
+            raylib_art: *std.Build.Step.Compile,
+            build_target: std.Build.ResolvedTarget,
+            build_optimize: std.builtin.OptimizeMode,
+        ) *std.Build.Step.Compile {
+            const mod = builder.createModule(.{
+                .root_source_file = builder.path(source_path),
+                .target = build_target,
+                .optimize = build_optimize,
+            });
+            mod.addImport("zig2d", lib_module);
+            mod.addImport("raylib", raylib_mod);
+            mod.addImport("raygui", raygui_mod);
+
+            const exe = builder.addExecutable(.{
+                .name = name,
+                .root_module = mod,
+            });
+            builder.installArtifact(exe);
+            exe.linkLibrary(raylib_art);
+            return exe;
+        }
+    }.call;
+
+    // Tests
     const lib_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/test_runner.zig"),
         .target = target,
@@ -41,65 +73,23 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
 
-    // Basic example
-    const basic_mod = b.createModule(.{
-        .root_source_file = b.path("examples/basic/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    basic_mod.addImport("zig2d", lib_mod);
-    basic_mod.addImport("raylib", raylib);
-    basic_mod.addImport("raygui", raygui);
-
-    const basic_exe = b.addExecutable(.{
-        .name = "example_basic",
-        .root_module = basic_mod,
-    });
-    b.installArtifact(basic_exe);
-    basic_exe.linkLibrary(raylib_artifact);
-
+    // Examples - much cleaner now!
+    const basic_exe = createExampleExe(b, "example_basic", "examples/basic/main.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
     const run_basic = b.addRunArtifact(basic_exe);
     const run_basic_step = b.step("run-basic", "Run the basic example");
     run_basic_step.dependOn(&run_basic.step);
 
-    // Advanced example
-    const advanced_mod = b.createModule(.{
-        .root_source_file = b.path("examples/advanced/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    advanced_mod.addImport("zig2d", lib_mod);
-    advanced_mod.addImport("raylib", raylib);
-    advanced_mod.addImport("raygui", raygui);
-
-    const advanced_exe = b.addExecutable(.{
-        .name = "example_advanced",
-        .root_module = advanced_mod,
-    });
-    b.installArtifact(advanced_exe);
-    advanced_exe.linkLibrary(raylib_artifact);
-
+    const advanced_exe = createExampleExe(b, "example_advanced", "examples/advanced/main.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
     const run_advanced = b.addRunArtifact(advanced_exe);
     const run_advanced_step = b.step("run-advanced", "Run the advanced example");
     run_advanced_step.dependOn(&run_advanced.step);
 
-    // Physics Verification Tests
-    const physics_verification_mod = b.createModule(.{
-        .root_source_file = b.path("examples/physics_verification.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    physics_verification_mod.addImport("zig2d", lib_mod);
-    physics_verification_mod.addImport("raylib", raylib);
-    physics_verification_mod.addImport("raygui", raygui);
+    const circle_vs_rect_exe = createExampleExe(b, "circle_vs_rect", "tests/rectvscircle.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
+    const run_circle_vs_rect = b.addRunArtifact(circle_vs_rect_exe);
+    const run_circle_vs_rect_step = b.step("run-circle-vs-rect", "Run the circle vs rect test");
+    run_circle_vs_rect_step.dependOn(&run_circle_vs_rect.step);
 
-    const physics_verification_exe = b.addExecutable(.{
-        .name = "physics_verification",
-        .root_module = physics_verification_mod,
-    });
-    b.installArtifact(physics_verification_exe);
-    physics_verification_exe.linkLibrary(raylib_artifact);
-
+    const physics_verification_exe = createExampleExe(b, "physics_verification", "examples/physics_verification.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
     const run_physics_verification = b.addRunArtifact(physics_verification_exe);
     const run_physics_verification_step = b.step("run-physics-tests", "Run the physics verification tests");
     run_physics_verification_step.dependOn(&run_physics_verification.step);
