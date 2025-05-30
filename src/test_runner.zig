@@ -1,5 +1,10 @@
+// Ensure all tests are compiled
 comptime {
     _ = @import("engine/engine.zig");
+    _ = @import("physics/collision.zig");
+    _ = @import("physics/narrowphase.zig");
+    _ = @import("physics/broadphase.zig");
+    _ = @import("physics/response.zig");
     _ = @import("physics/world.zig");
     _ = @import("physics/body.zig");
     _ = @import("input/keybinds.zig");
