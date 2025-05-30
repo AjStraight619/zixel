@@ -1,2 +1,10 @@
 .zig-cache
 zig-out
+
+*.o
+*.a
+*.so
+*.dylib
+*.lib
+*.exp
+*.def
