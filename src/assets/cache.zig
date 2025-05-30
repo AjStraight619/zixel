@@ -20,17 +20,12 @@ pub const AssetCache = struct {
 
     const Self = @This();
 
-    pub const Config = struct {
-        max_memory_mb: f32 = 256.0, // Default 256MB limit
-        enable_stats: bool = true,
-    };
-
-    pub fn init(allocator: Allocator, config: Config) Self {
+    pub fn init(alloc: Allocator) Self {
         return Self{
-            .allocator = allocator,
-            .entries = std.StringHashMap(CacheEntry).init(allocator),
-            .max_memory_bytes = @as(usize, @intFromFloat(config.max_memory_mb * 1024.0 * 1024.0)),
-            .enable_stats = config.enable_stats,
+            .allocator = alloc,
+            .entries = std.StringHashMap(CacheEntry).init(alloc),
+            .max_memory_bytes = @as(usize, @intFromFloat(256.0 * 1024.0 * 1024.0)),
+            .enable_stats = true,
             .stats = CacheStats{},
         };
     }
