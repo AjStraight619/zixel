@@ -3,6 +3,7 @@ const rl = @import("raylib");
 const zig2d = @import("zig2d");
 const Engine = zig2d.Engine;
 const Body = zig2d.Body;
+const utils = @import("../src/core/math/utils.zig");
 
 // PHYSICS VERIFICATION TEST TYPES AND RUNNER
 
@@ -138,31 +139,49 @@ const PHYSICS_SCENARIOS = [_]PhysicsTestScenario{
 
 fn setupManyShapesFallingOnFloorTest(engine: *Engine) !void {
     const world = engine.getPhysicsWorld();
-    engine.setGravity(rl.Vector2{ .x = 0, .y = 400 });
+    engine.setGravity(rl.Vector2{ .x = 0, .y = 300 }); // Enable gravity
+
+    // Use smaller timestep for better collision detection
+    world.config.physics_time_step = 1.0 / 120.0; // 120 FPS physics
+
+    // Create an angled ramp to test friction
+    const ramp_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 300, .height = 20 } };
+    const ramp = Body.initStatic(ramp_shape, rl.Vector2{ .x = 400, .y = 400 }, .{
+        .rotation = utils.degreesToRadians(15), // 15 degree slope
+        .friction = 1.0, // High friction ramp
+        .restitution = 0.1, // Low bounce
+    });
 
     // Floor spans full screen width (1000px) - position is CENTER of body
-    const floor_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 1000, .height = 20 } };
-    const floor = Body.initStatic(floor_shape, rl.Vector2{ .x = 500, .y = 500 }, .{});
+    const floor_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 1000, .height = 40 } };
+    const floor = Body.initStatic(floor_shape, rl.Vector2{ .x = 500, .y = 500 }, .{
+        .friction = 0.1,
+        .restitution = 0.2,
+    });
 
-    const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 20 } };
+    // Create objects with different friction properties
     const rect_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 20, .height = 20 } };
 
-    for (0..10) |_| {
-        std.time.sleep(4000);
+    // High friction object (should grip the ramp)
+    const sticky_rect = Body.initDynamic(rect_shape, rl.Vector2{ .x = 350, .y = 300 }, .{
+        .velocity = rl.Vector2{ .x = 0, .y = 0 },
+        .friction = 0.9, // High friction - should slide slowly
+        .restitution = 0.3,
+        .mass = 1.0,
+    });
 
-        const circle = Body.initDynamic(circle_shape, rl.Vector2{ .x = 100, .y = std.math.rand.float(f32) * 100 }, .{
-            .velocity = rl.Vector2{ .x = 100, .y = 0 },
-        });
+    // Low friction object (should slide quickly)
+    const slippery_rect = Body.initDynamic(rect_shape, rl.Vector2{ .x = 380, .y = 280 }, .{
+        .velocity = rl.Vector2{ .x = 0, .y = 0 },
+        .friction = 0.1, // Low friction - should slide fast like ice
+        .restitution = 0.8,
+        .mass = 1.0,
+    });
 
-        const rect = Body.initDynamic(rect_shape, rl.Vector2{ .x = 700, .y = std.math.rand.float(f32) * 100 }, .{
-            .velocity = rl.Vector2{ .x = -100, .y = 0 },
-        });
-
-        _ = try world.addBody(circle);
-        _ = try world.addBody(rect);
-    }
-
+    _ = try world.addBody(ramp);
     _ = try world.addBody(floor);
+    _ = try world.addBody(sticky_rect);
+    _ = try world.addBody(slippery_rect);
 }
 
 fn setupCircleVsRectHorizontalTest(engine: *Engine) !void {
@@ -192,11 +211,11 @@ fn setupBallRampTest(engine: *Engine) !void {
     // Create a ramp (rotated rectangle)
     const ramp_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 200, .height = 20 } };
     const ramp_1 = Body.initStatic(ramp_shape, rl.Vector2{ .x = 400, .y = 400 }, .{
-        .rotation = zig2d.utils.degreesToRadians(30), // 30 degree slope
+        .rotation = utils.degreesToRadians(30), // 30 degree slope
     });
 
     const ramp_2 = Body.initStatic(ramp_shape, rl.Vector2{ .x = 300, .y = 300 }, .{
-        .rotation = zig2d.utils.degreesToRadians(-30), // 30 degree slope
+        .rotation = utils.degreesToRadians(-30), // 30 degree slope
     });
 
     const floor_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 400, .height = 20 } };
@@ -285,7 +304,7 @@ fn setupSATAccuracyTest(engine: *Engine) !void {
 
     // Rectangle 2: Pre-rotated 45 degrees, moving toward the first one
     const rect2 = Body.initDynamic(rect_shape, rl.Vector2{ .x = 250, .y = 300 }, .{
-        .rotation = std.math.pi / 4.0, // 45 degrees rotation
+        .rotation = utils.degreesToRadians(45), // 45 degrees rotation
         .velocity = rl.Vector2{ .x = 80, .y = 0 }, // Moving right toward rect1
         .angular_velocity = 0.5, // Slight continued rotation
         .mass = 1.0,
