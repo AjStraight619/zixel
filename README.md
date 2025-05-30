@@ -28,7 +28,7 @@ zig build
 zig build run-physics-tests
 ```
 
-This opens a physics test suite. Press number keys 0-7 to run different tests, F1 to toggle debug visualization.
+This opens a physics test suite. Press number keys 0-7 to run different tests, g to toggle debug visualization.
 
 ## Current Features
 
