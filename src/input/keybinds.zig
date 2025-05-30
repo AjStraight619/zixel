@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const rl = @import("raylib");
 
 // Define all possible game actions
@@ -14,15 +15,15 @@ pub const GameAction = enum {
 };
 
 pub const KeybindManager = struct {
-    allocator: std.mem.Allocator,
+    alloc: Allocator,
     // Using a HashMap to store action -> key mappings.
     bindings: std.AutoHashMap(GameAction, rl.KeyboardKey),
 
     const Self = @This();
 
-    pub fn init(alloc: std.mem.Allocator) Self {
+    pub fn init(alloc: Allocator) Self {
         return Self{
-            .allocator = alloc,
+            .alloc = alloc,
             .bindings = std.AutoHashMap(GameAction, rl.KeyboardKey).init(alloc),
         };
     }
@@ -80,6 +81,5 @@ pub const KeybindManager = struct {
         }
     }
 
-    // TODO: Add methods for mouse button actions, gamepad actions etc.
     // TODO: Add functionality for rebinding keys at runtime (e.g., load/save from config file).
 };
