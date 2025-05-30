@@ -7,7 +7,7 @@ pub const Window = struct {
 
     const Self = @This();
 
-    pub fn init(config: WindowConfig) !Self {
+    pub fn init(config: WindowConfig) Self {
         rl.initWindow(
             @intCast(config.width),
             @intCast(config.height),
