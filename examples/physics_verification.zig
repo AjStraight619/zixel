@@ -64,15 +64,15 @@ const PhysicsTestRunner = struct {
     }
 
     pub fn renderUI(self: *Self) void {
-        if (self.current_scenario) |idx| {
-            const scenario = self.scenarios[idx];
-            const elapsed = rl.getTime() - self.start_time;
-            const remaining = scenario.duration_seconds - elapsed;
+        if (self.current_scenario) |_| {
+            // const scenario = self.scenarios[idx];
+            // const elapsed = rl.getTime() - self.start_time;
+            // const remaining = scenario.duration_seconds - elapsed;
 
-            rl.drawText(scenario.name, 10, 10, 20, rl.Color.black);
-            const timer_text = std.fmt.allocPrint(self.engine.allocator, "Time: {:.1}s", .{remaining}) catch "Timer Error";
-            defer self.engine.allocator.free(timer_text);
-            rl.drawText(@as([:0]const u8, @ptrCast(timer_text)), 10, 40, 16, rl.Color.dark_gray);
+            // rl.drawText(scenario.name, 10, 10, 20, rl.Color.black);
+            // const timer_text = std.fmt.allocPrint(self.engine.allocator, "Time: {:.1}s", .{remaining}) catch "Timer Error";
+            // defer self.engine.allocator.free(timer_text);
+            // rl.drawText(@as([:0]const u8, @ptrCast(timer_text)), 10, 40, 16, rl.Color.dark_gray);
         }
     }
 };
@@ -92,7 +92,12 @@ const PHYSICS_SCENARIOS = [_]PhysicsTestScenario{
     //     // .verify_fn = verifyCircleVsRectHorizontal,
     // },
 
-    .{ .name = "Many shapes falling on floor", .description = "Many shapes falling on floor", .setup_fn = setupManyShapesFallingOnFloorTest },
+    .{
+        .name = "Ball rolling from ramp to ramp to floor colliding with ball on floor",
+        .description = "Complex physics demonstration: Ball rolls down multiple ramps, jumps gaps, and collides with stationary balls creating a chain reaction.",
+        .setup_fn = setupBallRollingFromRampToRampToFloorTest,
+    },
+
     .{
         .name = "Momentum Conservation - Head-on Collision",
         .description = "Two equal mass bodies collide head-on. Total momentum should be conserved.",
@@ -139,9 +144,8 @@ const PHYSICS_SCENARIOS = [_]PhysicsTestScenario{
 
 fn setupManyShapesFallingOnFloorTest(engine: *Engine) !void {
     const world = engine.getPhysicsWorld();
-    engine.setGravity(rl.Vector2{ .x = 0, .y = 300 }); // Enable gravity
+    engine.setGravity(rl.Vector2{ .x = 0, .y = 300 });
 
-    // Use smaller timestep for better collision detection
     world.config.physics_time_step = 1.0 / 120.0; // 120 FPS physics
 
     // Create an angled ramp to test friction
@@ -236,6 +240,111 @@ fn setupBallRampTest(engine: *Engine) !void {
     _ = try world.addBody(ball);
 
     std.debug.print("Ball rolling down 30° ramp with gravity\n", .{});
+}
+
+fn setupBallRollingFromRampToRampToFloorTest(engine: *Engine) !void {
+    const world = engine.getPhysicsWorld();
+    engine.setGravity(rl.Vector2{ .x = 0, .y = 600 }); // Strong gravity for dramatic effect
+
+    // Use smaller timestep for better collision detection
+    world.config.physics_time_step = 1.0 / 120.0; // 120 FPS physics
+
+    // Create a PROPER cascading sequence with ski-jump style ramps
+    const ramp_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 180, .height = 20 } };
+
+    // Ramp 1: Launch ramp - moderate angle for good horizontal velocity
+    const ramp_1 = Body.initStatic(ramp_shape, rl.Vector2{
+        .x = 150, // Left side
+        .y = 250, // Starting height
+    }, .{
+        .rotation = utils.degreesToRadians(-15), // NEGATIVE 15 degrees (upward launch angle)
+        .friction = 0.2,
+        .restitution = 0.1,
+    });
+
+    // Ramp 2: Catch ramp - positioned where ball lands from ramp 1
+    const ramp_2 = Body.initStatic(ramp_shape, rl.Vector2{
+        .x = 400, // Where ball will arc to
+        .y = 350, // Lower to catch the falling ball
+    }, .{
+        .rotation = utils.degreesToRadians(-10), // NEGATIVE 10 degrees (slight upward launch)
+        .friction = 0.2,
+        .restitution = 0.1,
+    });
+
+    // Ramp 3: Final launch ramp
+    const ramp_3 = Body.initStatic(ramp_shape, rl.Vector2{
+        .x = 650, // Where ball lands from ramp 2
+        .y = 450, // Even lower
+    }, .{
+        .rotation = utils.degreesToRadians(-5), // NEGATIVE 5 degrees (slight launch toward floor)
+        .friction = 0.3,
+        .restitution = 0.1,
+    });
+
+    // Floor: Full width at bottom
+    const floor_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 1300, .height = 40 } };
+    const floor = Body.initStatic(floor_shape, rl.Vector2{
+        .x = 500, // Center horizontally
+        .y = 680, // Near bottom
+    }, .{
+        .friction = 0.6,
+        .restitution = 0.3,
+    });
+
+    // Rolling ball: Starts above first ramp with good momentum
+    const rolling_ball_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 12 } };
+    const rolling_ball = Body.initDynamic(rolling_ball_shape, rl.Vector2{
+        .x = 80, // Left of first ramp
+        .y = 180, // Above first ramp
+    }, .{
+        .velocity = rl.Vector2{ .x = 50, .y = 0 }, // Good horizontal velocity
+        .mass = 1.0,
+        .restitution = 0.8, // Bouncy for better launches
+        .friction = 0.3,
+    });
+
+    // Target balls on floor: Where final ramp launches to
+    const target_ball_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 15 } };
+
+    // Ball 1: Where ball will land after final ramp
+    const target_ball = Body.initDynamic(target_ball_shape, rl.Vector2{
+        .x = 1010, // Far right where ball will land
+        .y = 640, // On floor level
+    }, .{
+        .velocity = rl.Vector2{ .x = 0, .y = 0 },
+        .mass = 1.5,
+        .restitution = 0.8,
+        .friction = 0.3,
+    });
+
+    // Ball 2: Chain reaction
+    const extra_ball_1 = Body.initDynamic(target_ball_shape, rl.Vector2{ .x = 1040, .y = 640 }, .{
+        .velocity = rl.Vector2{ .x = 0, .y = 0 },
+        .mass = 1.2,
+        .restitution = 0.75,
+        .friction = 0.4,
+    });
+
+    // Ball 3: Final in chain
+    const extra_ball_2 = Body.initDynamic(rolling_ball_shape, rl.Vector2{ .x = 1070, .y = 640 }, .{
+        .velocity = rl.Vector2{ .x = 0, .y = 0 },
+        .mass = 0.8,
+        .restitution = 0.9,
+        .friction = 0.2,
+    });
+
+    // Add all bodies to world
+    _ = try world.addBody(ramp_1);
+    _ = try world.addBody(ramp_2);
+    _ = try world.addBody(ramp_3);
+    _ = try world.addBody(floor);
+    _ = try world.addBody(rolling_ball);
+    _ = try world.addBody(target_ball);
+    _ = try world.addBody(extra_ball_1);
+    _ = try world.addBody(extra_ball_2);
+
+    std.debug.print("SKI JUMP CASCADE: Ball launches from ramp to ramp in proper arcing trajectory!\n", .{});
 }
 
 fn setupMomentumConservationTest(engine: *Engine) !void {
@@ -582,7 +691,7 @@ fn updateGame(_: *Engine, _: std.mem.Allocator, _: f32) !void {
     }
 }
 
-fn renderGame(engine: *Engine, allocator: std.mem.Allocator) !void {
+fn renderGame(engine: *Engine, _: std.mem.Allocator) !void {
     // Render physics bodies
     const world = engine.getPhysicsWorld();
     for (world.bodies.items) |*body| {
@@ -650,36 +759,36 @@ fn renderGame(engine: *Engine, allocator: std.mem.Allocator) !void {
         runner.renderUI();
     }
 
-    // Render controls
-    const controls = [_][]const u8{
-        "PHYSICS VERIFICATION TESTS",
-        "",
-        "0-7: Run specific test",
-        "SPACE: Run next test in sequence",
-        "R: Reset world",
-        "F1: Toggle debug panel (AABB, contacts, etc.)",
-        "",
-        "AVAILABLE TESTS:",
-        "0. Ball rolling down ramp",
-        "1. Momentum Conservation",
-        "2. Energy Conservation",
-        "3. SAT Accuracy (Rotation)",
-        "4. Tunneling Prevention",
-        "5. Mass Ratio Physics",
-        "6. Sleep/Wake System",
-        "7. Newton's Cradle",
-    };
+    // // Render controls
+    // const controls = [_][]const u8{
+    //     "PHYSICS VERIFICATION TESTS",
+    //     "",
+    //     "0-7: Run specific test",
+    //     "SPACE: Run next test in sequence",
+    //     "R: Reset world",
+    //     "F1: Toggle debug panel (AABB, contacts, etc.)",
+    //     "",
+    //     "AVAILABLE TESTS:",
+    //     "0. Complex Ramp Sequence & Ball Collisions",
+    //     "1. Momentum Conservation",
+    //     "2. Energy Conservation",
+    //     "3. SAT Accuracy (Rotation)",
+    //     "4. Tunneling Prevention",
+    //     "5. Mass Ratio Physics",
+    //     "6. Sleep/Wake System",
+    //     "7. Newton's Cradle",
+    // };
 
-    var y: i32 = 450;
-    for (controls) |line| {
-        rl.drawText(@as([:0]const u8, @ptrCast(line)), 10, y, 14, rl.Color.dark_gray);
-        y += 16;
-    }
+    // var y: i32 = 450;
+    // for (controls) |line| {
+    //     rl.drawText(@as([:0]const u8, @ptrCast(line)), 10, y, 14, rl.Color.dark_gray);
+    //     y += 16;
+    // }
 
-    // Physics stats
-    const stats_text = std.fmt.allocPrint(allocator, "Bodies: {} | Steps: {}", .{ world.bodies.items.len, engine.getPhysicsStepCount() }) catch "Stats Error";
-    defer allocator.free(stats_text);
-    rl.drawText(@as([:0]const u8, @ptrCast(stats_text)), 10, 700, 16, rl.Color.black);
+    // // Physics stats
+    // const stats_text = std.fmt.allocPrint(allocator, "Bodies: {} | Steps: {}", .{ world.bodies.items.len, engine.getPhysicsStepCount() }) catch "Stats Error";
+    // defer allocator.free(stats_text);
+    // rl.drawText(@as([:0]const u8, @ptrCast(stats_text)), 10, 700, 16, rl.Color.black);
 }
 
 pub fn main() !void {
@@ -687,11 +796,14 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
+    const monitor_width = rl.getMonitorWidth(0); // Primary monitor
+    const monitor_height = rl.getMonitorHeight(0);
+
     var engine = try Engine.init(allocator, .{
         .window = .{
             .title = "Physics Verification Tests",
-            .width = 1000,
-            .height = 750,
+            .width = @intCast(monitor_width),
+            .height = @intCast(monitor_height),
         },
         .physics = .{
             .gravity = .{ .x = 0, .y = 0 },
