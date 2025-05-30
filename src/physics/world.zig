@@ -211,8 +211,13 @@ pub const PhysicsWorld = struct {
             const width = aabb.max.x - aabb.min.x;
             const height = aabb.max.y - aabb.min.y;
 
-            // Draw AABB outline
-            rl.drawRectangleLines(@intFromFloat(aabb.min.x), @intFromFloat(aabb.min.y), @intFromFloat(width), @intFromFloat(height), rl.Color.yellow);
+            const aabb_rect = rl.Rectangle{
+                .x = aabb.min.x,
+                .y = aabb.min.y,
+                .width = width,
+                .height = height,
+            };
+            rl.drawRectangleLinesEx(aabb_rect, 2.0, rl.Color.orange);
         }
     }
 
