@@ -1,10 +1,10 @@
 const std = @import("std");
-const zig2d = @import("zig2d");
-const Engine = zig2d.engine.Engine;
-const Rectangle = zig2d.Rectangle;
-const Body = zig2d.Body;
-const Vector2 = zig2d.Vector2;
-const DynamicBody = zig2d.DynamicBody;
+const zixel = @import("zixel");
+const Engine = zixel.engine.Engine;
+const Rectangle = zixel.Rectangle;
+const Body = zixel.Body;
+const Vector2 = zixel.Vector2;
+const DynamicBody = zixel.DynamicBody;
 const rl = @import("raylib");
 
 pub fn main() !void {

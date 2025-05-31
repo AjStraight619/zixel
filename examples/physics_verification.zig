@@ -1,8 +1,8 @@
 const std = @import("std");
 const rl = @import("raylib");
-const zig2d = @import("zig2d");
-const Engine = zig2d.Engine;
-const Body = zig2d.Body;
+const zixel = @import("zixel");
+const Engine = zixel.Engine;
+const Body = zixel.Body;
 const utils = @import("../src/core/math/utils.zig");
 
 // PHYSICS VERIFICATION TEST TYPES AND RUNNER
@@ -159,12 +159,12 @@ fn setUpBallDroppingOnEdgeOfRectTest(engine: *Engine) !void {
         rand_x_vel = -rand_x_vel;
     }
 
-    const ball_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 10 } };
+    const ball_shape = zixel.PhysicsShape{ .circle = .{ .radius = 10 } };
     const ball = Body.initDynamic(ball_shape, rl.Vector2{ .x = 457, .y = 100 }, .{
         .velocity = rl.Vector2{ .x = rand_x_vel, .y = 0 },
     });
 
-    const rect_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 100, .height = 20 } };
+    const rect_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 100, .height = 20 } };
     const rect = Body.initStatic(rect_shape, rl.Vector2{ .x = 500, .y = 400 }, .{
         .rotation = utils.degreesToRadians(-30),
     });
@@ -180,7 +180,7 @@ fn setupManyShapesFallingOnFloorTest(engine: *Engine) !void {
     world.config.physics_time_step = 1.0 / 120.0; // 120 FPS physics
 
     // Create an angled ramp to test friction
-    const ramp_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 300, .height = 20 } };
+    const ramp_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 300, .height = 20 } };
     const ramp = Body.initStatic(ramp_shape, rl.Vector2{ .x = 400, .y = 400 }, .{
         .rotation = utils.degreesToRadians(15), // 15 degree slope
         .friction = 1.0, // High friction ramp
@@ -188,14 +188,14 @@ fn setupManyShapesFallingOnFloorTest(engine: *Engine) !void {
     });
 
     // Floor spans full screen width (1000px) - position is CENTER of body
-    const floor_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 1000, .height = 40 } };
+    const floor_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 1000, .height = 40 } };
     const floor = Body.initStatic(floor_shape, rl.Vector2{ .x = 500, .y = 500 }, .{
         .friction = 0.1,
         .restitution = 0.2,
     });
 
     // Create objects with different friction properties
-    const rect_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 20, .height = 20 } };
+    const rect_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 20, .height = 20 } };
 
     // High friction object (should grip the ramp)
     const sticky_rect = Body.initDynamic(rect_shape, rl.Vector2{ .x = 350, .y = 300 }, .{
@@ -223,8 +223,8 @@ fn setupCircleVsRectHorizontalTest(engine: *Engine) !void {
     const world = engine.getPhysicsWorld();
     engine.setGravity(rl.Vector2{ .x = 0, .y = 0 });
 
-    const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 20 } };
-    const rect_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 20, .height = 20 } };
+    const circle_shape = zixel.PhysicsShape{ .circle = .{ .radius = 20 } };
+    const rect_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 20, .height = 20 } };
 
     const circle = Body.initDynamic(circle_shape, rl.Vector2{ .x = 100, .y = 100 }, .{
         .velocity = rl.Vector2{ .x = 100, .y = 0 },
@@ -244,7 +244,7 @@ fn setupBallRampTest(engine: *Engine) !void {
     engine.setGravity(rl.Vector2{ .x = 0, .y = 500 }); // Enable gravity
 
     // Create a ramp (rotated rectangle)
-    const ramp_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 200, .height = 20 } };
+    const ramp_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 200, .height = 20 } };
     const ramp_1 = Body.initStatic(ramp_shape, rl.Vector2{ .x = 400, .y = 400 }, .{
         .rotation = utils.degreesToRadians(30), // 30 degree slope
     });
@@ -253,11 +253,11 @@ fn setupBallRampTest(engine: *Engine) !void {
         .rotation = utils.degreesToRadians(-30), // 30 degree slope
     });
 
-    const floor_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 400, .height = 20 } };
+    const floor_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 400, .height = 20 } };
     const floor = Body.initStatic(floor_shape, rl.Vector2{ .x = 400, .y = 500 }, .{});
 
     // Create a ball to roll down
-    const ball_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 15 } };
+    const ball_shape = zixel.PhysicsShape{ .circle = .{ .radius = 15 } };
     const ball = Body.initDynamic(ball_shape, rl.Vector2{ .x = 350, .y = 100 }, .{
         .velocity = rl.Vector2{ .x = 0, .y = 0 },
         .mass = 1.0,
@@ -281,7 +281,7 @@ fn setupBallRollingFromRampToRampToFloorTest(engine: *Engine) !void {
     world.config.physics_time_step = 1.0 / 120.0; // 120 FPS physics
 
     // Create a PROPER cascading sequence with ski-jump style ramps
-    const ramp_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 180, .height = 20 } };
+    const ramp_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 180, .height = 20 } };
 
     // Ramp 1: Launch ramp - moderate angle for good horizontal velocity
     const ramp_1 = Body.initStatic(ramp_shape, rl.Vector2{
@@ -314,7 +314,7 @@ fn setupBallRollingFromRampToRampToFloorTest(engine: *Engine) !void {
     });
 
     // Floor: Full width at bottom
-    const floor_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 1300, .height = 40 } };
+    const floor_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 1300, .height = 40 } };
     const floor = Body.initStatic(floor_shape, rl.Vector2{
         .x = 500, // Center horizontally
         .y = 680, // Near bottom
@@ -324,7 +324,7 @@ fn setupBallRollingFromRampToRampToFloorTest(engine: *Engine) !void {
     });
 
     // Rolling ball: Starts above first ramp with good momentum
-    const rolling_ball_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 12 } };
+    const rolling_ball_shape = zixel.PhysicsShape{ .circle = .{ .radius = 12 } };
     const rolling_ball = Body.initDynamic(rolling_ball_shape, rl.Vector2{
         .x = 80, // Left of first ramp
         .y = 180, // Above first ramp
@@ -336,7 +336,7 @@ fn setupBallRollingFromRampToRampToFloorTest(engine: *Engine) !void {
     });
 
     // Target balls on floor: Where final ramp launches to
-    const target_ball_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 15 } };
+    const target_ball_shape = zixel.PhysicsShape{ .circle = .{ .radius = 15 } };
 
     // Ball 1: Where ball will land after final ramp
     const target_ball = Body.initDynamic(target_ball_shape, rl.Vector2{
@@ -382,7 +382,7 @@ fn setupMomentumConservationTest(engine: *Engine) !void {
     const world = engine.getPhysicsWorld();
     engine.setGravity(rl.Vector2{ .x = 0, .y = 0 }); // No gravity
 
-    const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 20 } };
+    const circle_shape = zixel.PhysicsShape{ .circle = .{ .radius = 20 } };
 
     // Body 1: Moving right
     const body1 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 550, .y = 300 }, .{
@@ -408,7 +408,7 @@ fn setupEnergyConservationTest(engine: *Engine) !void {
     const world = engine.getPhysicsWorld();
     engine.setGravity(rl.Vector2{ .x = 0, .y = 0 });
 
-    const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 25 } };
+    const circle_shape = zixel.PhysicsShape{ .circle = .{ .radius = 25 } };
 
     const body1 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 500, .y = 300 }, .{
         .velocity = rl.Vector2{ .x = 150, .y = 50 },
@@ -435,7 +435,7 @@ fn setupSATAccuracyTest(engine: *Engine) !void {
 
     std.debug.print("Testing SAT with pre-rotated rectangles colliding...\n", .{});
 
-    const rect_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 60, .height = 30 } };
+    const rect_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 60, .height = 30 } };
 
     // Rectangle 1: Axis-aligned (0 rotation)
     const rect1 = Body.initStatic(rect_shape, rl.Vector2{ .x = 750, .y = 300 }, .{
@@ -467,7 +467,7 @@ fn setupTunnelingPreventionTest(engine: *Engine) !void {
     std.debug.print("Testing fast object (400 px/s) vs thin barrier...\n", .{});
 
     // Fast moving ball - make it smaller to be more challenging
-    const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 10 } };
+    const circle_shape = zixel.PhysicsShape{ .circle = .{ .radius = 10 } };
     const fast_ball = Body.initDynamic(circle_shape, rl.Vector2{ .x = 450, .y = 300 }, .{
         .velocity = rl.Vector2{ .x = 400, .y = 0 },
         .mass = 1.0,
@@ -475,7 +475,7 @@ fn setupTunnelingPreventionTest(engine: *Engine) !void {
     });
 
     // Make barrier thicker and taller to be more reliable
-    const barrier_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 25, .height = 200 } };
+    const barrier_shape = zixel.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 25, .height = 200 } };
     const barrier = Body.initStatic(barrier_shape, rl.Vector2{ .x = 800, .y = 300 }, .{}); // Closer barrier
 
     _ = try world.addBody(fast_ball);
@@ -488,7 +488,7 @@ fn setupMassRatioTest(engine: *Engine) !void {
 
     std.debug.print("Testing mass ratio: Heavy(10kg, 25px/s) vs Light(1kg, 50px/s)\n", .{});
 
-    const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 30 } };
+    const circle_shape = zixel.PhysicsShape{ .circle = .{ .radius = 30 } };
 
     // Heavy object moving slowly
     const heavy = Body.initDynamic(circle_shape, rl.Vector2{ .x = 550, .y = 300 }, .{
@@ -498,7 +498,7 @@ fn setupMassRatioTest(engine: *Engine) !void {
     });
 
     // Light object moving faster
-    const light_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 15 } };
+    const light_shape = zixel.PhysicsShape{ .circle = .{ .radius = 15 } };
     const light = Body.initDynamic(light_shape, rl.Vector2{ .x = 1050, .y = 300 }, .{
         .velocity = rl.Vector2{ .x = -50, .y = 0 },
         .mass = 1.0,
@@ -519,7 +519,7 @@ fn setupSleepSystemTest(engine: *Engine) !void {
 
     std.debug.print("Testing sleep system: Bodies should sleep, then wake on impact\n", .{});
 
-    const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 20 } };
+    const circle_shape = zixel.PhysicsShape{ .circle = .{ .radius = 20 } };
 
     // Body that will slow down gradually due to friction
     const body1 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 550, .y = 200 }, .{
@@ -546,7 +546,7 @@ fn setupNewtonsCradleTest(engine: *Engine) !void {
 
     std.debug.print("Testing Newton's cradle chain reaction\n", .{});
 
-    const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 20 } };
+    const circle_shape = zixel.PhysicsShape{ .circle = .{ .radius = 20 } };
 
     // Create 5 balls in a line
     for (0..5) |i| {
@@ -722,7 +722,7 @@ fn updateGame(_: *Engine, _: std.mem.Allocator, _: f32) !void {
     }
 }
 
-fn renderGame(engine: *Engine, _: std.mem.Allocator) !void {
+fn renderGame(engine: *Engine, allocator: std.mem.Allocator) !void {
     // Render physics bodies
     const world = engine.getPhysicsWorld();
     for (world.bodies.items) |*body| {
@@ -790,36 +790,36 @@ fn renderGame(engine: *Engine, _: std.mem.Allocator) !void {
         runner.renderUI();
     }
 
-    // // Render controls
-    // const controls = [_][]const u8{
-    //     "PHYSICS VERIFICATION TESTS",
-    //     "",
-    //     "0-7: Run specific test",
-    //     "SPACE: Run next test in sequence",
-    //     "R: Reset world",
-    //     "F1: Toggle debug panel (AABB, contacts, etc.)",
-    //     "",
-    //     "AVAILABLE TESTS:",
-    //     "0. Complex Ramp Sequence & Ball Collisions",
-    //     "1. Momentum Conservation",
-    //     "2. Energy Conservation",
-    //     "3. SAT Accuracy (Rotation)",
-    //     "4. Tunneling Prevention",
-    //     "5. Mass Ratio Physics",
-    //     "6. Sleep/Wake System",
-    //     "7. Newton's Cradle",
-    // };
+    // Render controls
+    const controls = [_][]const u8{
+        "PHYSICS VERIFICATION TESTS",
+        "",
+        "0-7: Run specific test",
+        "SPACE: Run next test in sequence",
+        "R: Reset world",
+        "G: Toggle debug panel (AABB, contacts, etc.)",
+        "",
+        "AVAILABLE TESTS:",
+        "0. Ball Dropping on Edge of Rect",
+        "1. Momentum Conservation",
+        "2. Energy Conservation",
+        "3. SAT Accuracy (Rotation)",
+        "4. Tunneling Prevention",
+        "5. Mass Ratio Physics",
+        "6. Sleep/Wake System",
+        "7. Newton's Cradle",
+    };
 
-    // var y: i32 = 450;
-    // for (controls) |line| {
-    //     rl.drawText(@as([:0]const u8, @ptrCast(line)), 10, y, 14, rl.Color.dark_gray);
-    //     y += 16;
-    // }
+    var y: i32 = 450;
+    for (controls) |line| {
+        rl.drawText(@as([:0]const u8, @ptrCast(line)), 10, y, 14, rl.Color.dark_gray);
+        y += 16;
+    }
 
-    // // Physics stats
-    // const stats_text = std.fmt.allocPrint(allocator, "Bodies: {} | Steps: {}", .{ world.bodies.items.len, engine.getPhysicsStepCount() }) catch "Stats Error";
-    // defer allocator.free(stats_text);
-    // rl.drawText(@as([:0]const u8, @ptrCast(stats_text)), 10, 700, 16, rl.Color.black);
+    // Physics stats
+    const stats_text = std.fmt.allocPrint(allocator, "Bodies: {} | Active: {}", .{ world.bodies.items.len, world.bodies.items.len }) catch "Stats Error";
+    defer allocator.free(stats_text);
+    rl.drawText(@as([:0]const u8, @ptrCast(stats_text)), 10, 700, 16, rl.Color.black);
 }
 
 pub fn main() !void {
@@ -827,14 +827,11 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const monitor_width = rl.getMonitorWidth(0); // Primary monitor
-    const monitor_height = rl.getMonitorHeight(0);
-
     var engine = try Engine.init(allocator, .{
         .window = .{
             .title = "Physics Verification Tests",
-            .width = @intCast(monitor_width),
-            .height = @intCast(monitor_height),
+            .width = 1200,
+            .height = 800,
         },
         .physics = .{
             .gravity = .{ .x = 0, .y = 0 },

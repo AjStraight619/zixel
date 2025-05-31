@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
     lib_mod.addImport("raygui", raygui);
 
     const lib = b.addLibrary(.{
-        .name = "zig2d",
+        .name = "zixel",
         .root_module = lib_mod,
         .linkage = .static,
     });
@@ -45,7 +45,7 @@ pub fn build(b: *std.Build) void {
                 .target = build_target,
                 .optimize = build_optimize,
             });
-            mod.addImport("zig2d", lib_module);
+            mod.addImport("zixel", lib_module);
             mod.addImport("raylib", raylib_mod);
             mod.addImport("raygui", raygui_mod);
 

@@ -20,26 +20,74 @@ pub const GUI = struct {
     show_gui: bool = true,
     main_rect: rl.Rectangle,
     total_tabs: u32 = 2,
+    window: *const Window,
 
     const Self = @This();
 
+    // Responsive design constants
+    const MIN_WIDTH: f32 = 300;
+    const MAX_WIDTH: f32 = 500;
+    const MIN_HEIGHT: f32 = 400;
+    const MAX_HEIGHT: f32 = 700;
+    const MARGIN: f32 = 10;
+
     pub fn init(alloc: Allocator, window: *const Window) Self {
-        const window_size = window.getWindowSize();
-        return Self{
+        var self = Self{
             .alloc = alloc,
             .debug_panel = DebugPanel.init(),
             .object_creation = ObjectCreation.init(alloc),
-            .main_rect = rl.Rectangle{
-                .x = 10,
-                .y = 10,
-                .width = @floatFromInt(@divFloor(window_size.windowWidth, 4)),
-                .height = @floatFromInt(@divFloor(window_size.windowHeight, 2)),
-            },
+            .main_rect = undefined, // Will be calculated
+            .window = window,
         };
+
+        // Calculate initial responsive dimensions
+        self.updateResponsiveDimensions();
+        return self;
     }
 
     pub fn deinit(self: *Self) void {
         self.object_creation.deinit();
+    }
+
+    /// Calculate responsive dimensions based on current window size
+    fn updateResponsiveDimensions(self: *Self) void {
+        const window_size = self.window.getWindowSize();
+        const screen_width = @as(f32, @floatFromInt(window_size.windowWidth));
+        const screen_height = @as(f32, @floatFromInt(window_size.windowHeight));
+
+        // Calculate optimal width (prefer 25% of screen width, but respect min/max)
+        var optimal_width = screen_width * 0.25;
+
+        // For very small screens, use a larger percentage
+        if (screen_width < 800) {
+            optimal_width = screen_width * 0.4;
+        }
+
+        // Apply constraints
+        const panel_width = std.math.clamp(optimal_width, MIN_WIDTH, @min(MAX_WIDTH, screen_width - 2 * MARGIN));
+
+        // Calculate optimal height based on aspect ratio and screen size
+        var optimal_height: f32 = undefined;
+
+        if (screen_height < 600) {
+            // For small heights, use more of the screen
+            optimal_height = screen_height * 0.8;
+        } else if (screen_height < 800) {
+            optimal_height = screen_height * 0.6;
+        } else {
+            optimal_height = screen_height * 0.5;
+        }
+
+        // Apply height constraints
+        const panel_height = std.math.clamp(optimal_height, MIN_HEIGHT, @min(MAX_HEIGHT, screen_height - 2 * MARGIN));
+
+        // Position the panel (LEFT side of screen, like it was before)
+        self.main_rect = rl.Rectangle{
+            .x = MARGIN,
+            .y = MARGIN,
+            .width = panel_width,
+            .height = panel_height,
+        };
     }
 
     pub fn update(self: *Self, engine: *Engine) void {
@@ -67,7 +115,7 @@ pub const GUI = struct {
             self.active_tab = @enumFromInt(active_tab_int);
         }
 
-        // Content area (below tabs)
+        // Content area (below tabs) - make it scrollable if needed
         const content_rect = rl.Rectangle{
             .x = self.main_rect.x + 5,
             .y = self.main_rect.y + 25 + tab_height + 5,
@@ -99,4 +147,23 @@ pub const GUI = struct {
     pub fn isDebugPanelVisible(self: *const Self) bool {
         return self.show_gui;
     }
+
+    /// Get the current layout info for responsive content
+    pub fn getLayoutInfo(self: *const Self) LayoutInfo {
+        return LayoutInfo{
+            .is_compact = self.main_rect.width < 350 or self.main_rect.height < 500,
+            .is_narrow = self.main_rect.width < 350,
+            .is_short = self.main_rect.height < 500,
+            .available_width = self.main_rect.width - 20, // Account for margins
+            .available_height = self.main_rect.height - 90, // Account for title and tabs
+        };
+    }
+};
+
+pub const LayoutInfo = struct {
+    is_compact: bool,
+    is_narrow: bool,
+    is_short: bool,
+    available_width: f32,
+    available_height: f32,
 };
