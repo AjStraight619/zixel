@@ -1,4 +1,4 @@
-# Zig2dEngine
+# Zixel
 
 A 2D game engine written in Zig. Early development stage.
 
@@ -17,7 +17,7 @@ A basic 2D physics engine built with Zig 0.14 and raylib. Currently has:
 Requires **Zig 0.14**.
 
 ```bash
-git clone <https://github.com/AjStraight619/Zig2DEngine.git>
+git clone https://github.com/AjStraight619/zixel.git
 cd Zig2dEngine
 zig build
 ```
