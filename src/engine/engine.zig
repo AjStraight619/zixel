@@ -6,7 +6,7 @@ const PhysicsConfig = @import("../physics/config.zig").PhysicsConfig;
 const PhysicsWorld = @import("../physics/world.zig").PhysicsWorld;
 const Assets = @import("../assets/assets.zig").Assets;
 const keybinds = @import("../input/keybinds.zig");
-const GUI = @import("../gui/gui.zig").GUI;
+const GUIManager = @import("../gui/gui_manager.zig").GUI;
 const InputManager = @import("../input/input_manager.zig").InputManager;
 
 const EngineConfig = struct {
@@ -29,7 +29,7 @@ pub const Engine = struct {
     input_manager: InputManager,
     target_fps: u32,
     assets: Assets,
-    gui: GUI,
+    gui: GUIManager,
     // Use optional function pointers for callback fields
     handle_input: ?HandleInputFn = null,
     update_game: ?UpdateFn = null,
@@ -45,18 +45,21 @@ pub const Engine = struct {
 
         var input_manager = InputManager.init(alloc, &kb_manager);
         try input_manager.loadDefaultGuiBindings();
+        const window = Window.init(config.window);
+        const assets = Assets.init(alloc, config.assets_base_path);
+        const gui = GUIManager.init(alloc, &window);
+        const physics = PhysicsWorld.init(alloc, config.physics);
 
         rl.setTargetFPS(@intCast(config.target_fps));
-
         return Self{
             .allocator = alloc,
-            .window = Window.init(config.window),
-            .physics = PhysicsWorld.init(alloc, config.physics),
+            .window = window,
+            .physics = physics,
             .keybind_manager = kb_manager,
             .input_manager = input_manager,
             .target_fps = config.target_fps,
-            .assets = Assets.init(alloc, config.assets_base_path),
-            .gui = GUI.init(alloc),
+            .assets = assets,
+            .gui = gui,
             .handle_input = null,
             .update_game = null,
             .render_game = null,
@@ -170,7 +173,7 @@ pub const Engine = struct {
     }
 
     // GUI methods
-    pub fn getGUI(self: *Self) *GUI {
+    pub fn getGUI(self: *Self) *GUIManager {
         return &self.gui;
     }
 
