@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const rl = @import("raylib");
 const KeybindManager = @import("keybinds.zig").KeybindManager;
-const GUI = @import("../gui/gui.zig").GUI;
+const GUIManager = @import("../gui/gui_manager.zig").GUI;
 const Engine = @import("../engine/engine.zig").Engine;
 
 // Type aliases for clean function signatures
@@ -108,7 +108,7 @@ pub const InputManager = struct {
 
     /// Handle all input with proper prioritization and context switching
     /// Returns true if any input was consumed
-    pub fn handleInput(self: *Self, gui: *GUI, game_input_fn: ?HandleInputFn, engine: *Engine) !bool {
+    pub fn handleInput(self: *Self, gui: *GUIManager, game_input_fn: ?HandleInputFn, engine: *Engine) !bool {
         // Clear consumed keys from previous frame
         self.consumed_keys.clearRetainingCapacity();
 

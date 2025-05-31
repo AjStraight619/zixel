@@ -93,10 +93,16 @@ const PHYSICS_SCENARIOS = [_]PhysicsTestScenario{
     // },
 
     .{
-        .name = "Ball rolling from ramp to ramp to floor colliding with ball on floor",
-        .description = "Complex physics demonstration: Ball rolls down multiple ramps, jumps gaps, and collides with stationary balls creating a chain reaction.",
-        .setup_fn = setupBallRollingFromRampToRampToFloorTest,
+        .name = "Test ball dropping on edge of rect",
+        .description = "Many shapes falling on floor",
+        .setup_fn = setUpBallDroppingOnEdgeOfRectTest,
     },
+
+    // .{
+    //     .name = "Ball rolling from ramp to ramp to floor colliding with ball on floor",
+    //     .description = "Complex physics demonstration: Ball rolls down multiple ramps, jumps gaps, and collides with stationary balls creating a chain reaction.",
+    //     .setup_fn = setupBallRollingFromRampToRampToFloorTest,
+    // },
 
     .{
         .name = "Momentum Conservation - Head-on Collision",
@@ -141,6 +147,31 @@ const PHYSICS_SCENARIOS = [_]PhysicsTestScenario{
         .verify_fn = verifyChainReaction,
     },
 };
+
+fn setUpBallDroppingOnEdgeOfRectTest(engine: *Engine) !void {
+    const world = engine.getPhysicsWorld();
+    engine.setGravity(rl.Vector2{ .x = 0, .y = 50 });
+
+    var rand_x_vel = std.crypto.random.float(f32) * 1;
+    const should_be_negative = std.crypto.random.boolean();
+
+    if (should_be_negative) {
+        rand_x_vel = -rand_x_vel;
+    }
+
+    const ball_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 10 } };
+    const ball = Body.initDynamic(ball_shape, rl.Vector2{ .x = 457, .y = 100 }, .{
+        .velocity = rl.Vector2{ .x = rand_x_vel, .y = 0 },
+    });
+
+    const rect_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 100, .height = 20 } };
+    const rect = Body.initStatic(rect_shape, rl.Vector2{ .x = 500, .y = 400 }, .{
+        .rotation = utils.degreesToRadians(-30),
+    });
+
+    _ = try world.addBody(ball);
+    _ = try world.addBody(rect);
+}
 
 fn setupManyShapesFallingOnFloorTest(engine: *Engine) !void {
     const world = engine.getPhysicsWorld();
@@ -354,14 +385,14 @@ fn setupMomentumConservationTest(engine: *Engine) !void {
     const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 20 } };
 
     // Body 1: Moving right
-    const body1 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 200, .y = 300 }, .{
+    const body1 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 550, .y = 300 }, .{
         .velocity = rl.Vector2{ .x = 100, .y = 0 },
         .mass = 1.0,
         .restitution = 1.0, // Perfectly elastic
     });
 
     // Body 2: Moving left
-    const body2 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 600, .y = 300 }, .{
+    const body2 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 950, .y = 300 }, .{
         .velocity = rl.Vector2{ .x = -100, .y = 0 },
         .mass = 1.0,
         .restitution = 1.0,
@@ -379,13 +410,13 @@ fn setupEnergyConservationTest(engine: *Engine) !void {
 
     const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 25 } };
 
-    const body1 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 150, .y = 300 }, .{
+    const body1 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 500, .y = 300 }, .{
         .velocity = rl.Vector2{ .x = 150, .y = 50 },
         .mass = 2.0,
         .restitution = 0.95, // Very bouncy
     });
 
-    const body2 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 650, .y = 300 }, .{
+    const body2 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 1000, .y = 300 }, .{
         .velocity = rl.Vector2{ .x = -75, .y = -25 },
         .mass = 1.0,
         .restitution = 0.95,
@@ -407,12 +438,12 @@ fn setupSATAccuracyTest(engine: *Engine) !void {
     const rect_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 60, .height = 30 } };
 
     // Rectangle 1: Axis-aligned (0 rotation)
-    const rect1 = Body.initStatic(rect_shape, rl.Vector2{ .x = 400, .y = 300 }, .{
+    const rect1 = Body.initStatic(rect_shape, rl.Vector2{ .x = 750, .y = 300 }, .{
         .rotation = 0.0, // Axis-aligned
     });
 
     // Rectangle 2: Pre-rotated 45 degrees, moving toward the first one
-    const rect2 = Body.initDynamic(rect_shape, rl.Vector2{ .x = 250, .y = 300 }, .{
+    const rect2 = Body.initDynamic(rect_shape, rl.Vector2{ .x = 600, .y = 300 }, .{
         .rotation = utils.degreesToRadians(45), // 45 degrees rotation
         .velocity = rl.Vector2{ .x = 80, .y = 0 }, // Moving right toward rect1
         .angular_velocity = 0.5, // Slight continued rotation
@@ -423,7 +454,7 @@ fn setupSATAccuracyTest(engine: *Engine) !void {
     _ = try world.addBody(rect1);
     _ = try world.addBody(rect2);
 
-    std.debug.print("Rect1: axis-aligned at (400,300), Rect2: 45° rotated at (250,300) moving right\n", .{});
+    std.debug.print("Rect1: axis-aligned at (750,300), Rect2: 45° rotated at (600,300) moving right\n", .{});
 }
 
 fn setupTunnelingPreventionTest(engine: *Engine) !void {
@@ -437,7 +468,7 @@ fn setupTunnelingPreventionTest(engine: *Engine) !void {
 
     // Fast moving ball - make it smaller to be more challenging
     const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 10 } };
-    const fast_ball = Body.initDynamic(circle_shape, rl.Vector2{ .x = 100, .y = 300 }, .{
+    const fast_ball = Body.initDynamic(circle_shape, rl.Vector2{ .x = 450, .y = 300 }, .{
         .velocity = rl.Vector2{ .x = 400, .y = 0 },
         .mass = 1.0,
         .restitution = 0.9, // Higher restitution for clear bounce
@@ -445,7 +476,7 @@ fn setupTunnelingPreventionTest(engine: *Engine) !void {
 
     // Make barrier thicker and taller to be more reliable
     const barrier_shape = zig2d.PhysicsShape{ .rectangle = .{ .x = 0, .y = 0, .width = 25, .height = 200 } };
-    const barrier = Body.initStatic(barrier_shape, rl.Vector2{ .x = 450, .y = 300 }, .{}); // Closer barrier
+    const barrier = Body.initStatic(barrier_shape, rl.Vector2{ .x = 800, .y = 300 }, .{}); // Closer barrier
 
     _ = try world.addBody(fast_ball);
     _ = try world.addBody(barrier);
@@ -460,7 +491,7 @@ fn setupMassRatioTest(engine: *Engine) !void {
     const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 30 } };
 
     // Heavy object moving slowly
-    const heavy = Body.initDynamic(circle_shape, rl.Vector2{ .x = 200, .y = 300 }, .{
+    const heavy = Body.initDynamic(circle_shape, rl.Vector2{ .x = 550, .y = 300 }, .{
         .velocity = rl.Vector2{ .x = 25, .y = 0 },
         .mass = 10.0,
         .restitution = 0.9,
@@ -468,7 +499,7 @@ fn setupMassRatioTest(engine: *Engine) !void {
 
     // Light object moving faster
     const light_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 15 } };
-    const light = Body.initDynamic(light_shape, rl.Vector2{ .x = 700, .y = 300 }, .{
+    const light = Body.initDynamic(light_shape, rl.Vector2{ .x = 1050, .y = 300 }, .{
         .velocity = rl.Vector2{ .x = -50, .y = 0 },
         .mass = 1.0,
         .restitution = 0.9,
@@ -491,14 +522,14 @@ fn setupSleepSystemTest(engine: *Engine) !void {
     const circle_shape = zig2d.PhysicsShape{ .circle = .{ .radius = 20 } };
 
     // Body that will slow down gradually due to friction
-    const body1 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 200, .y = 200 }, .{
+    const body1 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 550, .y = 200 }, .{
         .velocity = rl.Vector2{ .x = 25, .y = 0 }, // Start with reasonable velocity
         .mass = 1.0,
         .friction = 0.99, // Very high friction to slow it down gradually
     });
 
     // Body that will collide much later
-    const body2 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 600, .y = 200 }, .{
+    const body2 = Body.initDynamic(circle_shape, rl.Vector2{ .x = 950, .y = 200 }, .{
         .velocity = rl.Vector2{ .x = -5, .y = 0 }, // Very slow approach
         .mass = 1.0,
         .friction = 0.98,
@@ -519,7 +550,7 @@ fn setupNewtonsCradleTest(engine: *Engine) !void {
 
     // Create 5 balls in a line
     for (0..5) |i| {
-        const x = 300 + @as(f32, @floatFromInt(i)) * 45; // Spaced 45 pixels apart
+        const x = 650 + @as(f32, @floatFromInt(i)) * 45; // Spaced 45 pixels apart, centered better
         const velocity = if (i == 0) rl.Vector2{ .x = 60, .y = 0 } else rl.Vector2{ .x = 0, .y = 0 };
 
         const ball = Body.initDynamic(circle_shape, rl.Vector2{ .x = x, .y = 300 }, .{
