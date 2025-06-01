@@ -2,10 +2,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const rl = @import("raylib");
 const rlg = @import("raygui");
-const Engine = @import("../engine/engine.zig").Engine;
+const ECSEngine = @import("../ecs/engine.zig").ECSEngine;
 const DebugPanel = @import("debug_panel.zig").DebugPanel;
 const ObjectCreation = @import("object_creation.zig").ObjectCreation;
-const Window = @import("../renderer/window.zig").Window;
 
 pub const Tab = enum(i32) {
     debug_panel = 0,
@@ -20,7 +19,6 @@ pub const GUI = struct {
     show_gui: bool = true,
     main_rect: rl.Rectangle,
     total_tabs: u32 = 2,
-    window: *const Window,
 
     const Self = @This();
 
@@ -31,13 +29,12 @@ pub const GUI = struct {
     const MAX_HEIGHT: f32 = 700;
     const MARGIN: f32 = 10;
 
-    pub fn init(alloc: Allocator, window: *const Window) Self {
+    pub fn init(alloc: Allocator) Self {
         var self = Self{
             .alloc = alloc,
             .debug_panel = DebugPanel.init(),
             .object_creation = ObjectCreation.init(alloc),
             .main_rect = undefined, // Will be calculated
-            .window = window,
         };
 
         // Calculate initial responsive dimensions
@@ -51,9 +48,8 @@ pub const GUI = struct {
 
     /// Calculate responsive dimensions based on current window size
     fn updateResponsiveDimensions(self: *Self) void {
-        const window_size = self.window.getWindowSize();
-        const screen_width = @as(f32, @floatFromInt(window_size.windowWidth));
-        const screen_height = @as(f32, @floatFromInt(window_size.windowHeight));
+        const screen_width = @as(f32, @floatFromInt(rl.getScreenWidth()));
+        const screen_height = @as(f32, @floatFromInt(rl.getScreenHeight()));
 
         // Calculate optimal width (prefer 25% of screen width, but respect min/max)
         var optimal_width = screen_width * 0.25;
@@ -90,8 +86,13 @@ pub const GUI = struct {
         };
     }
 
-    pub fn update(self: *Self, engine: *Engine) void {
+    pub fn update(self: *Self, engine: *ECSEngine) void {
         if (!self.show_gui) return;
+
+        // Update responsive dimensions if window was resized
+        if (engine.isWindowResized()) {
+            self.updateResponsiveDimensions();
+        }
 
         // Main container window with close button
         const close_result = rlg.windowBox(self.main_rect, "Game Tools");
@@ -127,7 +128,7 @@ pub const GUI = struct {
         self.renderActiveTab(engine, content_rect);
     }
 
-    fn renderActiveTab(self: *Self, engine: *Engine, content_rect: rl.Rectangle) void {
+    fn renderActiveTab(self: *Self, engine: *ECSEngine, content_rect: rl.Rectangle) void {
         switch (self.active_tab) {
             .debug_panel => self.debug_panel.render(engine, content_rect),
             .object_creation => self.object_creation.render(engine, content_rect),

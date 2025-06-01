@@ -1,13 +1,14 @@
 const std = @import("std");
 const rl = @import("raylib");
 const rlg = @import("raygui");
-const Engine = @import("../engine/engine.zig").Engine;
+const ECSEngine = @import("../ecs/engine.zig").ECSEngine;
+const components = @import("../ecs/components.zig");
 
 pub const DebugPanel = struct {
-    show_aabb: bool = false,
-    show_contacts: bool = false,
-    show_joints: bool = false,
-    show_physics_info: bool = true,
+    show_colliders: bool = false,
+    show_velocities: bool = false,
+    show_entity_ids: bool = false,
+    show_ecs_info: bool = true,
 
     const Self = @This();
 
@@ -15,69 +16,82 @@ pub const DebugPanel = struct {
         return Self{};
     }
 
-    pub fn render(self: *Self, engine: *Engine, content_rect: rl.Rectangle) void {
+    pub fn render(self: *Self, engine: *ECSEngine, content_rect: rl.Rectangle) void {
         var y_offset: f32 = 10;
         const item_height: f32 = 25;
         const margin: f32 = 10;
 
-        // AABB Debug Toggle
-        const aabb_rect = rl.Rectangle{
+        // Colliders Debug Toggle
+        const colliders_rect = rl.Rectangle{
             .x = content_rect.x + margin,
             .y = content_rect.y + y_offset,
-            .width = 120,
+            .width = 150,
             .height = item_height,
         };
-        _ = rlg.checkBox(aabb_rect, "Show AABB", &self.show_aabb);
+        _ = rlg.checkBox(colliders_rect, "Show Colliders", &self.show_colliders);
         y_offset += item_height + 5;
 
-        // Contacts Debug Toggle
-        const contacts_rect = rl.Rectangle{
+        // Velocities Debug Toggle
+        const velocities_rect = rl.Rectangle{
             .x = content_rect.x + margin,
             .y = content_rect.y + y_offset,
-            .width = 120,
+            .width = 150,
             .height = item_height,
         };
-        _ = rlg.checkBox(contacts_rect, "Show Contacts", &self.show_contacts);
+        _ = rlg.checkBox(velocities_rect, "Show Velocities", &self.show_velocities);
         y_offset += item_height + 5;
 
-        // Joints Debug Toggle
-        const joints_rect = rl.Rectangle{
+        // Entity IDs Debug Toggle
+        const ids_rect = rl.Rectangle{
             .x = content_rect.x + margin,
             .y = content_rect.y + y_offset,
-            .width = 120,
+            .width = 150,
             .height = item_height,
         };
-        _ = rlg.checkBox(joints_rect, "Show Joints", &self.show_joints);
+        _ = rlg.checkBox(ids_rect, "Show Entity IDs", &self.show_entity_ids);
         y_offset += item_height + 10;
 
-        // Physics Info Toggle
+        // ECS Info Toggle
         const info_rect = rl.Rectangle{
             .x = content_rect.x + margin,
             .y = content_rect.y + y_offset,
-            .width = 120,
+            .width = 150,
             .height = item_height,
         };
-        _ = rlg.checkBox(info_rect, "Show Physics Info", &self.show_physics_info);
+        _ = rlg.checkBox(info_rect, "Show ECS Info", &self.show_ecs_info);
         y_offset += item_height + 10;
 
-        // Physics Info Display
-        if (self.show_physics_info) {
-            const gravity = engine.getGravity();
-            const step_count = engine.getPhysicsStepCount();
+        // ECS Info Display
+        if (self.show_ecs_info) {
+            // Count entities by type
+            var player_count: u32 = 0;
+            var enemy_count: u32 = 0;
+            var total_entities: u32 = 0;
 
-            const info_text = std.fmt.allocPrintZ(std.heap.page_allocator, "Gravity: ({d:.1}, {d:.1})\nSteps: {d}", .{ gravity.x, gravity.y, step_count }) catch "Error displaying info";
+            const world = engine.getWorld();
+            const tag_id = world.getComponentId(components.Tag);
+
+            if (tag_id) |tid| {
+                var query_iter = world.query(&[_]@TypeOf(tid){tid}, &[_]@TypeOf(tid){});
+                while (query_iter.next()) |entity| {
+                    total_entities += 1;
+                    if (world.getComponent(components.Tag, entity)) |tag| {
+                        if (tag.has(.Player)) player_count += 1;
+                        if (tag.has(.Enemy)) enemy_count += 1;
+                    }
+                }
+            }
+
+            const info_text = std.fmt.allocPrintZ(std.heap.page_allocator, "Total Entities: {d}\nPlayers: {d}\nEnemies: {d}\nArchetypes: {d}", .{ total_entities, player_count, enemy_count, world.archetypes.items.len }) catch "Error displaying info";
             defer std.heap.page_allocator.free(info_text);
 
             const text_rect = rl.Rectangle{
                 .x = content_rect.x + margin,
                 .y = content_rect.y + y_offset,
                 .width = content_rect.width - 2 * margin,
-                .height = 40,
+                .height = 60,
             };
             _ = rlg.label(text_rect, @ptrCast(info_text));
         }
-
-        // Update engine debug settings
-        engine.enableDebugDrawing(self.show_aabb, self.show_contacts, self.show_joints);
     }
 };

@@ -84,13 +84,25 @@ pub fn build(b: *std.Build) void {
     const run_advanced_step = b.step("run-advanced", "Run the advanced example");
     run_advanced_step.dependOn(&run_advanced.step);
 
-    const circle_vs_rect_exe = createExampleExe(b, "circle_vs_rect", "tests/rectvscircle.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
-    const run_circle_vs_rect = b.addRunArtifact(circle_vs_rect_exe);
-    const run_circle_vs_rect_step = b.step("run-circle-vs-rect", "Run the circle vs rect test");
-    run_circle_vs_rect_step.dependOn(&run_circle_vs_rect.step);
+    const ecs_demo_exe = createExampleExe(b, "ecs_demo", "examples/ecs_demo/main.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
+    const run_ecs_demo = b.addRunArtifact(ecs_demo_exe);
+    const run_ecs_demo_step = b.step("run-ecs-demo", "Run the ECS demo");
+    run_ecs_demo_step.dependOn(&run_ecs_demo.step);
 
-    const physics_verification_exe = createExampleExe(b, "physics_verification", "examples/physics_verification.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
-    const run_physics_verification = b.addRunArtifact(physics_verification_exe);
-    const run_physics_verification_step = b.step("run-physics-tests", "Run the physics verification tests");
-    run_physics_verification_step.dependOn(&run_physics_verification.step);
+    // Legacy examples (temporarily disabled while focusing on ECS)
+    // const circle_vs_rect_exe = createExampleExe(b, "circle_vs_rect", "tests/rectvscircle.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
+    // const run_circle_vs_rect = b.addRunArtifact(circle_vs_rect_exe);
+    // const run_circle_vs_rect_step = b.step("run-circle-vs-rect", "Run the circle vs rect test");
+    // run_circle_vs_rect_step.dependOn(&run_circle_vs_rect.step);
+
+    // const physics_verification_exe = createExampleExe(b, "physics_verification", "examples/physics_verification.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
+    // const run_physics_verification = b.addRunArtifact(physics_verification_exe);
+    // const run_physics_verification_step = b.step("run-physics-tests", "Run the physics verification tests");
+    // run_physics_verification_step.dependOn(&run_physics_verification.step);
+
+    // Debug application for testing rendering
+    const debug_render_exe = createExampleExe(b, "debug_render", "debug_render.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
+    const run_debug_render = b.addRunArtifact(debug_render_exe);
+    const debug_step = b.step("debug-render", "Run debug render test");
+    debug_step.dependOn(&run_debug_render.step);
 }
