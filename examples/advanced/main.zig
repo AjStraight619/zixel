@@ -8,7 +8,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var engine = try zixel.ECSEngine.init(allocator, .{
+    var engine = try zixel.Engine.init(allocator, .{
         .window_width = 1200,
         .window_height = 800,
         .window_title = "Advanced ECS Demo with Physics",
@@ -23,7 +23,7 @@ pub fn main() !void {
     try engine.run();
 }
 
-fn setupScene(engine: *zixel.ECSEngine) !void {
+fn setupScene(engine: *zixel.Engine) !void {
     std.debug.print("Setting up advanced physics scene...\n", .{});
 
     // Create main camera FIRST - this is crucial for rendering

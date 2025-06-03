@@ -2,7 +2,7 @@
 // Built on Entity Component System (ECS) architecture
 
 // Core ECS engine
-pub const ECSEngine = @import("ecs/engine.zig").ECSEngine;
+pub const Engine = @import("ecs/engine.zig").Engine;
 pub const World = @import("ecs/world.zig").World;
 pub const Entity = @import("ecs/world.zig").Entity;
 pub const ComponentId = @import("ecs/world.zig").ComponentId;
@@ -28,11 +28,10 @@ pub const utils = @import("core/math/utils.zig");
 pub const PhysicsShape = @import("core/math/shapes.zig").PhysicsShape;
 
 // For convenience, re-export the main engine type at top level
-pub const Engine = ECSEngine;
 
 // ECS module grouping for explicit imports
 pub const ecs = struct {
-    pub const ECSEngine = @import("ecs/engine.zig").ECSEngine;
+    pub const Engine = @import("ecs/engine.zig").Engine;
     pub const World = @import("ecs/world.zig").World;
     pub const Entity = @import("ecs/world.zig").Entity;
     pub const ComponentId = @import("ecs/world.zig").ComponentId;
