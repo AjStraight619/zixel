@@ -1,7 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const rlg = @import("raygui");
-const ECSEngine = @import("../ecs/engine.zig").ECSEngine;
+const Engine = @import("../ecs/engine.zig").Engine;
 const components = @import("../ecs/components.zig");
 
 pub const DebugPanel = struct {
@@ -16,7 +16,7 @@ pub const DebugPanel = struct {
         return Self{};
     }
 
-    pub fn render(self: *Self, engine: *ECSEngine, content_rect: rl.Rectangle) void {
+    pub fn render(self: *Self, engine: *Engine, content_rect: rl.Rectangle) void {
         var y_offset: f32 = 10;
         const item_height: f32 = 25;
         const margin: f32 = 10;
@@ -69,16 +69,14 @@ pub const DebugPanel = struct {
             var total_entities: u32 = 0;
 
             const world = engine.getWorld();
-            const tag_id = world.getComponentId(components.Tag);
+            const tag_id = components.ComponentType.getId(components.Tag).toU32();
 
-            if (tag_id) |tid| {
-                var query_iter = world.query(&[_]@TypeOf(tid){tid}, &[_]@TypeOf(tid){});
-                while (query_iter.next()) |entity| {
-                    total_entities += 1;
-                    if (world.getComponent(components.Tag, entity)) |tag| {
-                        if (tag.has(.Player)) player_count += 1;
-                        if (tag.has(.Enemy)) enemy_count += 1;
-                    }
+            var query_iter = world.query(&[_]@TypeOf(tag_id){tag_id}, &[_]@TypeOf(tag_id){});
+            while (query_iter.next()) |entity| {
+                total_entities += 1;
+                if (world.getComponent(components.Tag, entity)) |tag| {
+                    if (tag.has(.Player)) player_count += 1;
+                    if (tag.has(.Enemy)) enemy_count += 1;
                 }
             }
 

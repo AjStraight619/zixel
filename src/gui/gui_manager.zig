@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const rl = @import("raylib");
 const rlg = @import("raygui");
-const ECSEngine = @import("../ecs/engine.zig").ECSEngine;
+const Engine = @import("../ecs/engine.zig").Engine;
 const DebugPanel = @import("debug_panel.zig").DebugPanel;
 const ObjectCreation = @import("object_creation.zig").ObjectCreation;
 
@@ -86,7 +86,7 @@ pub const GUI = struct {
         };
     }
 
-    pub fn update(self: *Self, engine: *ECSEngine) void {
+    pub fn update(self: *Self, engine: *Engine) void {
         if (!self.show_gui) return;
 
         // Update responsive dimensions if window was resized
@@ -128,7 +128,7 @@ pub const GUI = struct {
         self.renderActiveTab(engine, content_rect);
     }
 
-    fn renderActiveTab(self: *Self, engine: *ECSEngine, content_rect: rl.Rectangle) void {
+    fn renderActiveTab(self: *Self, engine: *Engine, content_rect: rl.Rectangle) void {
         switch (self.active_tab) {
             .debug_panel => self.debug_panel.render(engine, content_rect),
             .object_creation => self.object_creation.render(engine, content_rect),

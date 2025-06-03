@@ -2,7 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const rlg = @import("raygui");
 const Allocator = std.mem.Allocator;
-const ECSEngine = @import("../ecs/engine.zig").ECSEngine;
+const Engine = @import("../ecs/engine.zig").Engine;
 const components = @import("../ecs/components.zig");
 const LayoutInfo = @import("gui_manager.zig").LayoutInfo;
 const PhysicsShape = @import("../core/math/shapes.zig").PhysicsShape;
@@ -42,7 +42,7 @@ pub const ObjectCreation = struct {
         _ = self;
     }
 
-    pub fn render(self: *Self, engine: *ECSEngine, content_rect: rl.Rectangle) void {
+    pub fn render(self: *Self, engine: *Engine, content_rect: rl.Rectangle) void {
         // For now, create a mock layout info - in a real implementation you'd pass this from GUI manager
         const layout_info = LayoutInfo{
             .is_compact = content_rect.width < 350 or content_rect.height < 500,
@@ -59,7 +59,7 @@ pub const ObjectCreation = struct {
         }
     }
 
-    fn renderNormalLayout(self: *Self, engine: *ECSEngine, content_rect: rl.Rectangle, layout_info: LayoutInfo) void {
+    fn renderNormalLayout(self: *Self, engine: *Engine, content_rect: rl.Rectangle, layout_info: LayoutInfo) void {
         var y_offset: f32 = 5;
         const item_height: f32 = 25;
         const margin: f32 = 10;
@@ -123,7 +123,7 @@ pub const ObjectCreation = struct {
         self.renderCreateButton(engine, content_rect, y_offset, layout_info, item_height, margin);
     }
 
-    fn renderCompactLayout(self: *Self, engine: *ECSEngine, content_rect: rl.Rectangle, layout_info: LayoutInfo) void {
+    fn renderCompactLayout(self: *Self, engine: *Engine, content_rect: rl.Rectangle, layout_info: LayoutInfo) void {
         // For compact layout, use smaller spacing and potentially two columns
         var y_offset: f32 = 3;
         const item_height: f32 = 22;
@@ -422,7 +422,7 @@ pub const ObjectCreation = struct {
         return y_offset;
     }
 
-    fn renderCreateButton(self: *Self, engine: *ECSEngine, content_rect: rl.Rectangle, y_start: f32, layout_info: LayoutInfo, item_height: f32, margin: f32) void {
+    fn renderCreateButton(self: *Self, engine: *Engine, content_rect: rl.Rectangle, y_start: f32, layout_info: LayoutInfo, item_height: f32, margin: f32) void {
         // Create Object Button
         const extra_height: f32 = if (layout_info.is_compact) 3.0 else 5.0;
         const button_height: f32 = item_height + extra_height;
@@ -438,7 +438,7 @@ pub const ObjectCreation = struct {
         }
     }
 
-    fn createObject(self: *Self, engine: *ECSEngine) void {
+    fn createObject(self: *Self, engine: *Engine) void {
         // Create transform
         const transform = components.Transform{
             .position = self.spawn_position,
@@ -450,32 +450,32 @@ pub const ObjectCreation = struct {
             .circle => PhysicsShape{ .circle = .{ .radius = self.object_radius } },
         };
 
-        // Create physics entity (static or dynamic)
-        const is_static = (self.selected_body_type == .static);
-        const entity = engine.createPhysicsEntity(transform, physics_shape, is_static) catch return;
+        // Create physics entity using new API
+        const entity = if (self.selected_body_type == .static)
+            engine.createStaticBody(transform, physics_shape, if (self.selected_shape_type == .rectangle) rl.Color.brown else rl.Color.maroon) catch return
+        else
+            engine.createDynamicBody(transform, physics_shape, if (self.selected_shape_type == .rectangle) rl.Color.green else rl.Color.lime) catch return;
 
-        // Add visual representation
-        const visual_shape = switch (self.selected_shape_type) {
-            .rectangle => blk: {
-                var shape = components.Shape.rectangle(self.object_width, self.object_height, true);
-                shape.color = if (is_static) rl.Color.brown else rl.Color.green;
-                break :blk shape;
-            },
-            .circle => blk: {
-                var shape = components.Shape.circle(self.object_radius, true);
-                shape.color = if (is_static) rl.Color.maroon else rl.Color.lime;
-                break :blk shape;
-            },
-        };
-
-        engine.addComponent(entity, visual_shape) catch return;
+        // Apply custom physics parameters for dynamic bodies
+        if (self.selected_body_type == .dynamic) {
+            if (engine.getComponent(components.PhysicsBodyRef, entity)) |physics_ref| {
+                const physics_world = engine.getPhysicsWorld();
+                if (physics_world.getBody(physics_ref.body_id)) |body| {
+                    body.kind.Dynamic.mass = self.mass;
+                    body.kind.Dynamic.restitution = self.restitution;
+                    body.kind.Dynamic.friction = self.friction;
+                    body.kind.Dynamic.gravity_scale = 1.0; // Ensure gravity is applied
+                    std.log.info("Applied custom physics: mass={d:.2}, restitution={d:.2}, friction={d:.2}", .{ self.mass, self.restitution, self.friction });
+                }
+            }
+        }
 
         // Add a tag for identification
         var tag = components.Tag{};
         tag.add(.Obstacle);
         engine.addComponent(entity, tag) catch return;
 
-        const body_type_str = if (is_static) "static" else "dynamic";
+        const body_type_str = if (self.selected_body_type == .static) "static" else "dynamic";
         const shape_type_str = if (self.selected_shape_type == .rectangle) "rectangle" else "circle";
 
         std.log.info("Created {s} {s} at ({d:.1}, {d:.1})", .{ body_type_str, shape_type_str, self.spawn_position.x, self.spawn_position.y });
@@ -626,7 +626,7 @@ pub const ObjectCreation = struct {
         return y_offset;
     }
 
-    fn renderCreateButtonCompact(self: *Self, engine: *ECSEngine, content_rect: rl.Rectangle, y_start: f32, layout_info: LayoutInfo, item_height: f32, margin: f32) void {
+    fn renderCreateButtonCompact(self: *Self, engine: *Engine, content_rect: rl.Rectangle, y_start: f32, layout_info: LayoutInfo, item_height: f32, margin: f32) void {
         const button_rect = rl.Rectangle{
             .x = content_rect.x + margin,
             .y = content_rect.y + y_start,
