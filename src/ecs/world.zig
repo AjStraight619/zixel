@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const HashMap = std.HashMap;
 const AutoHashMap = std.AutoHashMap;
+const components = @import("components.zig");
 
 /// Unique identifier for entities
 pub const Entity = u64;
@@ -26,9 +27,9 @@ pub const ComponentStorage = struct {
 
     const Self = @This();
 
-    pub fn init(allocator: Allocator, comptime T: type) Self {
+    pub fn init(alloc: Allocator, comptime T: type) Self {
         return Self{
-            .data = ArrayList(u8).init(allocator),
+            .data = ArrayList(u8).init(alloc),
             .element_size = @sizeOf(T),
             .alignment = @alignOf(T),
             .count = 0,
@@ -39,11 +40,11 @@ pub const ComponentStorage = struct {
         self.data.deinit();
     }
 
-    pub fn push(self: *Self, allocator: Allocator, component: anytype) !usize {
+    pub fn push(self: *Self, component: anytype) !usize {
         const bytes = std.mem.asBytes(&component);
 
         // Ensure we have enough space and resize the items array
-        const new_size = (self.count + 1) * self.element_size;
+        const new_size: usize = (self.count + 1) * self.element_size;
         try self.data.ensureTotalCapacity(new_size);
         try self.data.resize(new_size);
 
@@ -53,7 +54,6 @@ pub const ComponentStorage = struct {
 
         self.count += 1;
 
-        _ = allocator; // Mark as unused since we don't need it in new API
         return self.count - 1;
     }
 
@@ -64,7 +64,7 @@ pub const ComponentStorage = struct {
         return @as(*T, @ptrCast(@alignCast(slice.ptr)));
     }
 
-    pub fn removeSwapLast(self: *Self, allocator: Allocator, index: usize) void {
+    pub fn removeSwapLast(self: *Self, index: usize) void {
         if (index >= self.count) return;
 
         if (index < self.count - 1) {
@@ -76,7 +76,6 @@ pub const ComponentStorage = struct {
 
         self.count -= 1;
         self.data.resize(self.count * self.element_size) catch {};
-        _ = allocator; // Mark as unused
     }
 };
 
@@ -91,22 +90,25 @@ pub const Archetype = struct {
     /// Maps index to entity ID
     index_to_entity: ArrayList(Entity),
 
+    alloc: Allocator,
+
     const Self = @This();
 
-    pub fn init(allocator: Allocator, component_ids: []const ComponentId) !Self {
-        const sorted_ids = try allocator.dupe(ComponentId, component_ids);
+    pub fn init(alloc: Allocator, component_ids: []const ComponentId) !Self {
+        const sorted_ids = try alloc.dupe(ComponentId, component_ids);
         std.mem.sort(ComponentId, sorted_ids, {}, std.sort.asc(ComponentId));
 
         return Self{
             .component_ids = sorted_ids,
-            .storages = AutoHashMap(ComponentId, ComponentStorage).init(allocator),
-            .entity_to_index = AutoHashMap(Entity, usize).init(allocator),
-            .index_to_entity = ArrayList(Entity).init(allocator),
+            .storages = AutoHashMap(ComponentId, ComponentStorage).init(alloc),
+            .entity_to_index = AutoHashMap(Entity, usize).init(alloc),
+            .index_to_entity = ArrayList(Entity).init(alloc),
+            .alloc = alloc,
         };
     }
 
-    pub fn deinit(self: *Self, allocator: Allocator) void {
-        allocator.free(self.component_ids);
+    pub fn deinit(self: *Self) void {
+        self.alloc.free(self.component_ids);
 
         var storage_iter = self.storages.valueIterator();
         while (storage_iter.next()) |storage| {
@@ -117,7 +119,7 @@ pub const Archetype = struct {
         self.index_to_entity.deinit();
     }
 
-    pub fn addComponent(self: *Self, allocator: Allocator, entity: Entity, component_id: ComponentId, component: anytype) !void {
+    pub fn addComponent(self: *Self, entity: Entity, component_id: ComponentId, component: anytype) !void {
         // Get or create entity index (shared across all components in this archetype)
         var entity_index: usize = undefined;
 
@@ -134,7 +136,7 @@ pub const Archetype = struct {
         // Ensure storage exists for this component type
         if (!self.storages.contains(component_id)) {
             const T = @TypeOf(component);
-            try self.storages.put(component_id, ComponentStorage.init(allocator, T));
+            try self.storages.put(component_id, ComponentStorage.init(self.alloc, T));
         }
 
         // Get storage and ensure it has enough capacity for this entity index
@@ -163,7 +165,7 @@ pub const Archetype = struct {
         return storage.get(T, index);
     }
 
-    pub fn removeEntity(self: *Self, allocator: Allocator, entity: Entity) void {
+    pub fn removeEntity(self: *Self, entity: Entity) void {
         const index = self.entity_to_index.get(entity) orelse return;
         const last_index = self.index_to_entity.items.len - 1;
 
@@ -179,7 +181,7 @@ pub const Archetype = struct {
         // Remove from all storages
         var storage_iter = self.storages.valueIterator();
         while (storage_iter.next()) |storage| {
-            storage.removeSwapLast(allocator, index);
+            storage.removeSwapLast(index);
         }
     }
 
@@ -249,13 +251,9 @@ pub const QueryIterator = struct {
 
 /// Main ECS World
 pub const World = struct {
-    allocator: Allocator,
+    alloc: Allocator,
     /// All archetypes in the world
     archetypes: ArrayList(Archetype),
-    /// Maps component type hash to unique ID
-    component_registry: AutoHashMap(u64, ComponentId),
-    /// Next available component ID
-    next_component_id: ComponentId,
     /// Next available entity ID
     next_entity_id: Entity,
     /// Maps entity to archetype index
@@ -263,44 +261,38 @@ pub const World = struct {
 
     const Self = @This();
 
-    pub fn init(allocator: Allocator) Self {
+    pub fn init(alloc: Allocator) Self {
         return Self{
-            .allocator = allocator,
-            .archetypes = ArrayList(Archetype).init(allocator),
-            .component_registry = AutoHashMap(u64, ComponentId).init(allocator),
-            .next_component_id = 0,
+            .alloc = alloc,
+            .archetypes = ArrayList(Archetype).init(alloc),
             .next_entity_id = 1, // 0 is reserved for null entity
-            .entity_to_archetype = AutoHashMap(Entity, usize).init(allocator),
+            .entity_to_archetype = AutoHashMap(Entity, usize).init(alloc),
         };
     }
 
     pub fn deinit(self: *Self) void {
         for (self.archetypes.items) |*archetype| {
-            archetype.deinit(self.allocator);
+            archetype.deinit();
         }
         self.archetypes.deinit();
-        self.component_registry.deinit();
         self.entity_to_archetype.deinit();
     }
 
-    /// Register a component type and return its ID
+    /// Register a component type - now just validates the component is known at compile time
     pub fn registerComponent(self: *Self, comptime T: type) !ComponentId {
-        const type_hash = comptime std.hash_map.hashString(@typeName(T));
+        // Get compile-time component ID
+        const component_type = components.ComponentType.getId(T);
+        const id = component_type.toU32();
 
-        if (self.component_registry.get(type_hash)) |id| {
-            return id;
-        }
-
-        const id = self.next_component_id;
-        self.next_component_id += 1;
-        try self.component_registry.put(type_hash, id);
+        _ = self; // Mark self as unused since we don't need it
         return id;
     }
 
-    /// Get component ID for a type
+    /// Get component ID for a type - now always succeeds at compile time
     pub fn getComponentId(self: *const Self, comptime T: type) ?ComponentId {
-        const type_hash = comptime std.hash_map.hashString(@typeName(T));
-        return self.component_registry.get(type_hash);
+        _ = self; // Mark self as unused
+        const component_type = components.ComponentType.getId(T);
+        return component_type.toU32();
     }
 
     /// Spawn a new entity
@@ -316,81 +308,90 @@ pub const World = struct {
         const component_id = try self.registerComponent(T);
 
         // Find or create archetype for this entity
-        var new_components = ArrayList(ComponentId).init(self.allocator);
+        var new_components = ArrayList(ComponentId).init(self.alloc);
         defer new_components.deinit();
 
         try new_components.append(component_id);
 
         // If entity already exists, copy existing components and move to new archetype
         if (self.entity_to_archetype.get(entity)) |current_archetype_idx| {
-            const current_archetype = &self.archetypes.items[current_archetype_idx];
+            // IMPORTANT: Don't hold pointers to archetype data while the ArrayList might be reallocated!
+            // First, collect all the component data we need
+            var existing_component_ids = ArrayList(ComponentId).init(self.alloc);
+            defer existing_component_ids.deinit();
 
-            // Collect all existing component IDs
-            for (current_archetype.component_ids) |existing_id| {
-                if (existing_id != component_id) {
-                    try new_components.append(existing_id);
+            // Copy the component IDs (not pointers to them!)
+            {
+                const source_archetype = &self.archetypes.items[current_archetype_idx];
+
+                for (source_archetype.component_ids) |existing_id| {
+                    if (existing_id != component_id) {
+                        try new_components.append(existing_id);
+                        try existing_component_ids.append(existing_id);
+                    }
                 }
             }
 
-            // Find or create the new archetype
+            // Find or create the new archetype (this might reallocate the ArrayList!)
             const new_archetype_idx = try self.findOrCreateArchetype(new_components.items);
+
+            // Now it's safe to get pointers again (after potential reallocation)
+            const current_archetype = &self.archetypes.items[current_archetype_idx];
             var new_archetype = &self.archetypes.items[new_archetype_idx];
 
             // Copy all existing components to the new archetype
-            for (current_archetype.component_ids) |existing_id| {
-                if (existing_id != component_id) {
-                    // Get the component data from the old archetype
-                    const old_storage = current_archetype.storages.get(existing_id).?;
-                    const entity_index = current_archetype.entity_to_index.get(entity).?;
+            for (existing_component_ids.items) |existing_id| {
+                // Get the component data from the old archetype
+                const old_storage = current_archetype.storages.get(existing_id).?;
+                const entity_index = current_archetype.entity_to_index.get(entity).?;
 
-                    // Copy the raw component data
-                    const start_idx = entity_index * old_storage.element_size;
-                    const component_bytes = old_storage.data.items[start_idx .. start_idx + old_storage.element_size];
+                // Copy the raw component data
+                const start_idx = entity_index * old_storage.element_size;
+                const component_bytes = old_storage.data.items[start_idx .. start_idx + old_storage.element_size];
 
-                    // Create storage in new archetype if needed
-                    if (!new_archetype.storages.contains(existing_id)) {
-                        // We need to create storage with the right type, but we don't know the type here
-                        // This is a limitation of the current design - we need type information
-                        // For now, create a generic storage with the same element size
-                        const new_storage = ComponentStorage{
-                            .data = ArrayList(u8).init(self.allocator),
-                            .element_size = old_storage.element_size,
-                            .alignment = old_storage.alignment,
-                            .count = 0,
-                        };
-                        try new_archetype.storages.put(existing_id, new_storage);
-                    }
-
-                    // Get or create entity index in new archetype
-                    const new_entity_index: usize = if (new_archetype.entity_to_index.get(entity)) |existing_index|
-                        existing_index
-                    else blk: {
-                        const idx = new_archetype.index_to_entity.items.len;
-                        try new_archetype.entity_to_index.put(entity, idx);
-                        try new_archetype.index_to_entity.append(entity);
-                        break :blk idx;
+                // Create storage in new archetype if needed
+                if (!new_archetype.storages.contains(existing_id)) {
+                    // We need to create storage with the right type, but we don't know the type here
+                    // This is a limitation of the current design - we need type information
+                    // For now, create a generic storage with the same element size
+                    const new_storage = ComponentStorage{
+                        .data = ArrayList(u8).init(self.alloc),
+                        .element_size = old_storage.element_size,
+                        .alignment = old_storage.alignment,
+                        .count = 0,
                     };
-
-                    // Copy component data to new archetype
-                    var new_storage = new_archetype.storages.getPtr(existing_id).?;
-                    const required_size = (new_entity_index + 1) * new_storage.element_size;
-                    try new_storage.data.ensureTotalCapacity(required_size);
-
-                    if (new_storage.count <= new_entity_index) {
-                        try new_storage.data.resize(required_size);
-                        new_storage.count = new_entity_index + 1;
-                    }
-
-                    const new_start_idx = new_entity_index * new_storage.element_size;
-                    @memcpy(new_storage.data.items[new_start_idx .. new_start_idx + new_storage.element_size], component_bytes);
+                    try new_archetype.storages.put(existing_id, new_storage);
                 }
+
+                // Get or create entity index in new archetype
+                const new_entity_index: usize = if (new_archetype.entity_to_index.get(entity)) |existing_index|
+                    existing_index
+                else blk: {
+                    const idx = new_archetype.index_to_entity.items.len;
+                    try new_archetype.entity_to_index.put(entity, idx);
+                    try new_archetype.index_to_entity.append(entity);
+                    break :blk idx;
+                };
+
+                // Copy component data to new archetype
+                var new_storage = new_archetype.storages.getPtr(existing_id).?;
+                const required_size = (new_entity_index + 1) * new_storage.element_size;
+                try new_storage.data.ensureTotalCapacity(required_size);
+
+                if (new_storage.count <= new_entity_index) {
+                    try new_storage.data.resize(required_size);
+                    new_storage.count = new_entity_index + 1;
+                }
+
+                const new_start_idx = new_entity_index * new_storage.element_size;
+                @memcpy(new_storage.data.items[new_start_idx .. new_start_idx + new_storage.element_size], component_bytes);
             }
 
             // Add the new component to the new archetype
-            try new_archetype.addComponent(self.allocator, entity, component_id, component);
+            try new_archetype.addComponent(entity, component_id, component);
 
             // Remove entity from old archetype
-            current_archetype.removeEntity(self.allocator, entity);
+            current_archetype.removeEntity(entity);
 
             // Update entity mapping
             try self.entity_to_archetype.put(entity, new_archetype_idx);
@@ -399,7 +400,7 @@ pub const World = struct {
             const archetype_idx = try self.findOrCreateArchetype(new_components.items);
             var archetype = &self.archetypes.items[archetype_idx];
 
-            try archetype.addComponent(self.allocator, entity, component_id, component);
+            try archetype.addComponent(entity, component_id, component);
             try self.entity_to_archetype.put(entity, archetype_idx);
         }
     }
@@ -418,7 +419,7 @@ pub const World = struct {
         const archetype_idx = self.entity_to_archetype.get(entity) orelse return;
 
         // Create new archetype without this component
-        var new_components = ArrayList(ComponentId).init(self.allocator);
+        var new_components = ArrayList(ComponentId).init(self.alloc);
         defer new_components.deinit();
 
         const current_archetype = &self.archetypes.items[archetype_idx];
@@ -430,13 +431,13 @@ pub const World = struct {
 
         if (new_components.items.len == 0) {
             // Entity has no components, remove entirely
-            current_archetype.removeEntity(self.allocator, entity);
+            current_archetype.removeEntity(entity);
             _ = self.entity_to_archetype.remove(entity);
         } else {
             // Move to new archetype
             const new_archetype_idx = try self.findOrCreateArchetype(new_components.items);
             // TODO: Copy other components to new archetype
-            current_archetype.removeEntity(self.allocator, entity);
+            current_archetype.removeEntity(entity);
             try self.entity_to_archetype.put(entity, new_archetype_idx);
         }
     }
@@ -445,7 +446,7 @@ pub const World = struct {
     pub fn despawnEntity(self: *Self, entity: Entity) void {
         const archetype_idx = self.entity_to_archetype.get(entity) orelse return;
         var archetype = &self.archetypes.items[archetype_idx];
-        archetype.removeEntity(self.allocator, entity);
+        archetype.removeEntity(entity);
         _ = self.entity_to_archetype.remove(entity);
     }
 
@@ -462,8 +463,8 @@ pub const World = struct {
     /// Find or create an archetype with the given component types
     fn findOrCreateArchetype(self: *Self, component_ids: []const ComponentId) !usize {
         // Sort for comparison
-        const sorted_ids = try self.allocator.dupe(ComponentId, component_ids);
-        defer self.allocator.free(sorted_ids);
+        const sorted_ids = try self.alloc.dupe(ComponentId, component_ids);
+        defer self.alloc.free(sorted_ids);
         std.mem.sort(ComponentId, sorted_ids, {}, std.sort.asc(ComponentId));
 
         // Look for existing archetype
@@ -474,7 +475,7 @@ pub const World = struct {
         }
 
         // Create new archetype
-        const new_archetype = try Archetype.init(self.allocator, sorted_ids);
+        const new_archetype = try Archetype.init(self.alloc, sorted_ids);
         try self.archetypes.append(new_archetype);
         return self.archetypes.items.len - 1;
     }
