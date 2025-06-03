@@ -7,6 +7,7 @@ const components = @import("components.zig");
 const PhysicsWorld = @import("../physics/world.zig").PhysicsWorld;
 const PhysicsBodyType = @import("../physics/body.zig").Body;
 const PhysicsShape = @import("../core/math/shapes.zig").PhysicsShape;
+const InputManager = @import("../input/input_manager.zig").InputManager;
 
 /// Function signature for systems
 pub const SystemFn = *const fn (world: *World, dt: f32) anyerror!void;
@@ -43,198 +44,26 @@ pub const SystemSchedule = struct {
     pub fn createDefaultSchedule(allocator: std.mem.Allocator) !Self {
         var schedule = Self.init(allocator);
 
-        // Input systems
-        try schedule.addSystem(inputUpdateSystem);
-        try schedule.addSystem(playerInputSystem);
-
-        // Physics sync system runs AFTER physics world update (called from engine)
-        // Note: Real physics simulation happens in engine.update() before systems run
-        try schedule.addSystem(physicsSyncFromWorldSystem);
-
         // Legacy movement system for non-physics entities
         try schedule.addSystem(movementSystem);
-
-        // Game logic systems
-        try schedule.addSystem(timerSystem);
-        try schedule.addSystem(lifetimeSystem);
-        try schedule.addSystem(healthSystem);
-        try schedule.addSystem(animationSystem);
-
-        // Rendering systems (order matters!)
-        try schedule.addSystem(cameraSystem); // Begin 2D camera mode
-        try schedule.addSystem(spriteRenderSystem); // Render sprites
-        try schedule.addSystem(shapeRenderSystem); // Render shapes
-        try schedule.addSystem(textRenderSystem); // Render text
-        try schedule.addSystem(endCameraSystem); // End 2D camera mode
-
-        // Cleanup systems
-        try schedule.addSystem(destroySystem);
 
         return schedule;
     }
 };
 
-// ============================================================================
-// INPUT SYSTEMS
-// ============================================================================
-
-/// Updates input components with current keyboard/mouse state
-pub fn inputUpdateSystem(world: *World, dt: f32) !void {
-    _ = dt;
-
-    const input_id = world.getComponentId(components.Input) orelse return;
-    var query_iter = world.query(&[_]ComponentId{input_id}, &[_]ComponentId{});
-
-    while (query_iter.next()) |entity| {
-        if (world.getComponent(components.Input, entity)) |input| {
-            // Update movement input
-            input.movement.x = 0;
-            input.movement.y = 0;
-
-            if (rl.isKeyDown(.w) or rl.isKeyDown(.up)) input.movement.y -= 1;
-            if (rl.isKeyDown(.s) or rl.isKeyDown(.down)) input.movement.y += 1;
-            if (rl.isKeyDown(.a) or rl.isKeyDown(.left)) input.movement.x -= 1;
-            if (rl.isKeyDown(.d) or rl.isKeyDown(.right)) input.movement.x += 1;
-
-            // Clear previous frame actions
-            input.actions = 0;
-            input.mouse_buttons = 0;
-
-            // Update action inputs (pressed this frame)
-            if (rl.isKeyPressed(.space)) {
-                input.setAction(.Jump, true, false);
-            }
-            if (rl.isKeyPressed(.x)) {
-                input.setAction(.Attack, true, false);
-            }
-            if (rl.isKeyPressed(.e)) {
-                input.setAction(.Interact, true, false);
-            }
-            if (rl.isKeyPressed(.escape)) {
-                input.setAction(.Menu, true, false);
-            }
-            if (rl.isKeyPressed(.i)) {
-                input.setAction(.Inventory, true, false);
-            }
-
-            // Update held actions
-            input.setAction(.Jump, rl.isKeyPressed(.space), rl.isKeyDown(.space));
-            input.setAction(.Attack, rl.isKeyPressed(.x), rl.isKeyDown(.x));
-            input.setAction(.Interact, rl.isKeyPressed(.e), rl.isKeyDown(.e));
-
-            // Update mouse input
-            input.mouse_world_pos = rl.getMousePosition();
-            if (rl.isMouseButtonPressed(.left)) input.mouse_buttons |= 1;
-            if (rl.isMouseButtonPressed(.right)) input.mouse_buttons |= 2;
-            if (rl.isMouseButtonPressed(.middle)) input.mouse_buttons |= 4;
-
-            input.mouse_buttons_held = 0;
-            if (rl.isMouseButtonDown(.left)) input.mouse_buttons_held |= 1;
-            if (rl.isMouseButtonDown(.right)) input.mouse_buttons_held |= 2;
-            if (rl.isMouseButtonDown(.middle)) input.mouse_buttons_held |= 4;
-        }
-    }
-}
-
-/// Handles player movement and actions based on input
-pub fn playerInputSystem(world: *World, dt: f32) !void {
-    _ = dt;
-
-    const player_id = world.getComponentId(components.Player) orelse return;
-    const input_id = world.getComponentId(components.Input) orelse return;
-    const velocity_id = world.getComponentId(components.Velocity) orelse return;
-
-    var query_iter = world.query(&[_]ComponentId{ player_id, input_id, velocity_id }, &[_]ComponentId{});
-
-    while (query_iter.next()) |entity| {
-        if (world.getComponent(components.Player, entity)) |player| {
-            if (world.getComponent(components.Input, entity)) |input| {
-                if (world.getComponent(components.Velocity, entity)) |velocity| {
-                    // Movement
-                    velocity.linear.x = input.movement.x * player.move_speed;
-
-                    // Jumping
-                    if (input.isActionPressed(.Jump)) {
-                        if (player.is_grounded) {
-                            velocity.linear.y = -player.jump_force;
-                            player.is_grounded = false;
-                        } else if (player.can_double_jump and !player.has_used_double_jump) {
-                            velocity.linear.y = -player.jump_force;
-                            player.has_used_double_jump = true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ============================================================================
-// PHYSICS SYSTEMS (Updated to use real physics world)
-// ============================================================================
-
-/// Syncs ECS transforms FROM physics world bodies (after physics simulation)
-/// This should be called AFTER the physics world has been updated
-pub fn physicsSyncFromWorldSystem(world: *World, dt: f32) !void {
-    _ = dt;
-
-    // NOTE: This is a placeholder system that shows how physics sync would work
-    // The actual syncing is done in engine.syncPhysicsWithTransforms()
-    // because it needs access to the physics world reference
-
-    const physics_body_id = world.getComponentId(components.PhysicsBodyRef) orelse return;
-    const transform_id = world.getComponentId(components.Transform) orelse return;
-
-    var query_iter = world.query(&[_]ComponentId{ physics_body_id, transform_id }, &[_]ComponentId{});
-    var count: u32 = 0;
-
-    while (query_iter.next()) |entity| {
-        count += 1;
-        _ = entity; // Entity found with physics body and transform
-    }
-
-    if (count > 0) {
-        std.debug.print("Found {d} physics entities to sync\n", .{count});
-    }
-}
-
-/// Legacy physics system - now deprecated, kept for backwards compatibility
-pub fn physicsSystem(world: *World, dt: f32) !void {
-    const rigidbody_id = world.getComponentId(components.RigidBody) orelse return;
-    const velocity_id = world.getComponentId(components.Velocity) orelse return;
-
-    var query_iter = world.query(&[_]ComponentId{ rigidbody_id, velocity_id }, &[_]ComponentId{});
-
-    while (query_iter.next()) |entity| {
-        if (world.getComponent(components.RigidBody, entity)) |body| {
-            if (world.getComponent(components.Velocity, entity)) |velocity| {
-                if (!body.is_active or body.body_type != .Dynamic) continue;
-
-                // NO GRAVITY - just keep objects where they are
-                // const gravity = rl.Vector2.init(0, 980.0); // DISABLED
-
-                // Apply damping
-                velocity.linear.x *= (1.0 - body.linear_damping * dt);
-                velocity.linear.y *= (1.0 - body.linear_damping * dt);
-                velocity.angular *= (1.0 - body.angular_damping * dt);
-            }
-        }
-    }
-}
-
-/// Updates entity positions based on velocity (for non-physics entities)
+/// Legacy movement system for entities with Velocity but no physics
 pub fn movementSystem(world: *World, dt: f32) !void {
-    const transform_id = world.getComponentId(components.Transform) orelse return;
-    const velocity_id = world.getComponentId(components.Velocity) orelse return;
-    const physics_body_id = world.getComponentId(components.PhysicsBodyRef);
+    const transform_id = components.ComponentType.getId(components.Transform).toU32();
+    const velocity_id = components.ComponentType.getId(components.Velocity).toU32();
 
-    // Only move entities that DON'T have physics bodies (avoid conflicts)
-    var query_iter = if (physics_body_id) |physics_id|
-        world.query(&[_]ComponentId{ transform_id, velocity_id }, &[_]ComponentId{physics_id})
-    else
-        world.query(&[_]ComponentId{ transform_id, velocity_id }, &[_]ComponentId{});
+    var query_iter = world.query(&[_]ComponentId{ transform_id, velocity_id }, &[_]ComponentId{});
 
     while (query_iter.next()) |entity| {
+        // Skip entities that have physics bodies (they're handled by the physics system)
+        if (world.getComponent(components.PhysicsBodyRef, entity) != null) {
+            continue;
+        }
+
         if (world.getComponent(components.Transform, entity)) |transform| {
             if (world.getComponent(components.Velocity, entity)) |velocity| {
                 transform.position.x += velocity.linear.x * dt;
@@ -245,253 +74,185 @@ pub fn movementSystem(world: *World, dt: f32) !void {
     }
 }
 
-// ============================================================================
-// GAMEPLAY SYSTEMS
-// ============================================================================
-
-/// Updates timer components
-pub fn timerSystem(world: *World, dt: f32) !void {
-    const timer_id = world.getComponentId(components.Timer) orelse return;
-    var query_iter = world.query(&[_]ComponentId{timer_id}, &[_]ComponentId{});
-
-    while (query_iter.next()) |entity| {
-        if (world.getComponent(components.Timer, entity)) |timer| {
-            _ = timer.update(dt);
-        }
-    }
-}
-
-/// Destroys entities when their lifetime expires
-pub fn lifetimeSystem(world: *World, dt: f32) !void {
-    const lifetime_id = world.getComponentId(components.Lifetime) orelse return;
-    var query_iter = world.query(&[_]ComponentId{lifetime_id}, &[_]ComponentId{});
-
-    var entities_to_destroy = std.ArrayList(Entity).init(world.allocator);
-    defer entities_to_destroy.deinit();
-
-    while (query_iter.next()) |entity| {
-        if (world.getComponent(components.Lifetime, entity)) |lifetime| {
-            if (lifetime.update(dt)) {
-                try entities_to_destroy.append(entity);
-            }
-        }
-    }
-
-    for (entities_to_destroy.items) |entity| {
-        world.despawnEntity(entity);
-    }
-}
-
-/// Handles health regeneration and invulnerability
-pub fn healthSystem(world: *World, dt: f32) !void {
-    const health_id = world.getComponentId(components.Health) orelse return;
-    var query_iter = world.query(&[_]ComponentId{health_id}, &[_]ComponentId{});
-
-    while (query_iter.next()) |entity| {
-        if (world.getComponent(components.Health, entity)) |health| {
-            // Update invulnerability
-            if (health.is_invulnerable) {
-                health.invulnerability_timer -= dt;
-                if (health.invulnerability_timer <= 0) {
-                    health.is_invulnerable = false;
-                }
-            }
-
-            // Apply regeneration
-            if (health.regeneration_rate > 0) {
-                health.heal(health.regeneration_rate * dt);
-            }
-        }
-    }
-}
-
-/// Updates sprite animations
-pub fn animationSystem(world: *World, dt: f32) !void {
-    const animation_id = world.getComponentId(components.Animation) orelse return;
-    var query_iter = world.query(&[_]ComponentId{animation_id}, &[_]ComponentId{});
-
-    while (query_iter.next()) |entity| {
-        if (world.getComponent(components.Animation, entity)) |animation| {
-            _ = animation.update(dt);
-        }
-    }
-}
-
-// ============================================================================
-// RENDERING SYSTEMS
-// ============================================================================
-
-/// Updates camera for rendering
+/// Camera system - sets up 2D camera for rendering
 pub fn cameraSystem(world: *World, dt: f32) !void {
-    _ = dt;
-
-    const camera_id = world.getComponentId(components.Camera2D) orelse return;
-    const transform_id = world.getComponentId(components.Transform) orelse return;
-
-    var query_iter = world.query(&[_]ComponentId{ camera_id, transform_id }, &[_]ComponentId{});
-
-    while (query_iter.next()) |entity| {
-        if (world.getComponent(components.Camera2D, entity)) |camera| {
-            if (world.getComponent(components.Transform, entity)) |transform| {
-                if (camera.is_main) {
-                    const raylib_camera = rl.Camera2D{
-                        .target = camera.target,
-                        .offset = rl.Vector2.init(
-                            @as(f32, @floatFromInt(rl.getScreenWidth())) / 2.0 + camera.offset.x,
-                            @as(f32, @floatFromInt(rl.getScreenHeight())) / 2.0 + camera.offset.y,
-                        ),
-                        .rotation = camera.rotation * (180.0 / std.math.pi), // Convert to degrees
-                        .zoom = camera.zoom,
-                    };
-
-                    rl.beginMode2D(raylib_camera);
-                    _ = transform;
-                    return; // Only set up one main camera
-                }
-            }
-        }
-    }
-}
-
-/// Ends camera 2D mode after all 2D rendering
-pub fn endCameraSystem(world: *World, dt: f32) !void {
     _ = world;
     _ = dt;
 
-    // End 2D camera mode
+    // Simple camera with no offset - objects appear at their actual coordinates
+    const camera = rl.Camera2D{
+        .target = rl.Vector2.init(0, 0),
+        .offset = rl.Vector2.init(0, 0),
+        .rotation = 0.0,
+        .zoom = 1.0,
+    };
+
+    rl.beginMode2D(camera);
+}
+
+/// End camera system - ends 2D camera mode
+pub fn endCameraSystem(world: *World, dt: f32) !void {
+    _ = world;
+    _ = dt;
     rl.endMode2D();
 }
 
-/// Renders sprite components
+/// Sprite rendering system
 pub fn spriteRenderSystem(world: *World, dt: f32) !void {
     _ = dt;
-
-    const sprite_id = world.getComponentId(components.Sprite) orelse return;
-    const transform_id = world.getComponentId(components.Transform) orelse return;
-
-    var query_iter = world.query(&[_]ComponentId{ sprite_id, transform_id }, &[_]ComponentId{});
-
-    var count: u32 = 0;
-
-    while (query_iter.next()) |entity| {
-        if (world.getComponent(components.Sprite, entity)) |sprite| {
-            if (world.getComponent(components.Transform, entity)) |transform| {
-                count += 1;
-
-                const dest_rect = rl.Rectangle{
-                    .x = transform.position.x - 16, // Assuming 32x32 sprite
-                    .y = transform.position.y - 16,
-                    .width = 32,
-                    .height = 32,
-                };
-
-                // For now, just draw colored rectangles
-                if (sprite.texture_id == 0) {
-                    rl.drawRectangleRec(dest_rect, sprite.color);
-                }
-                // TODO: Implement texture rendering when texture system is added
-            }
-        }
-    }
-
-    if (count > 0) {
-        std.debug.print("Rendered {d} sprites\n", .{count});
-    }
+    // Note: Sprite component was removed, so this system is now empty
+    // Left here for potential future sprite implementation
+    _ = world;
 }
 
-/// Renders geometric shapes
+/// Shape rendering system
 pub fn shapeRenderSystem(world: *World, dt: f32) !void {
     _ = dt;
 
-    const shape_id = world.getComponentId(components.Shape) orelse return;
-    const transform_id = world.getComponentId(components.Transform) orelse return;
+    const transform_id = components.ComponentType.getId(components.Transform).toU32();
+    const shape_id = components.ComponentType.getId(components.Shape).toU32();
 
-    var query_iter = world.query(&[_]ComponentId{ shape_id, transform_id }, &[_]ComponentId{});
+    var query_iter = world.query(&[_]ComponentId{ transform_id, shape_id }, &[_]ComponentId{});
 
-    var count: u32 = 0;
     while (query_iter.next()) |entity| {
-        if (world.getComponent(components.Shape, entity)) |shape| {
-            if (world.getComponent(components.Transform, entity)) |transform| {
-                count += 1;
+        if (world.getComponent(components.Transform, entity)) |transform| {
+            if (world.getComponent(components.Shape, entity)) |shape| {
+                const pos = transform.position;
 
                 switch (shape.shape_type) {
                     .Circle => |circle| {
                         if (circle.filled) {
-                            rl.drawCircleV(transform.position, circle.radius, shape.color);
+                            rl.drawCircleV(pos, circle.radius, shape.color);
                         } else {
-                            rl.drawCircleLinesV(transform.position, circle.radius, shape.color);
+                            rl.drawCircleLinesV(pos, circle.radius, shape.color);
                         }
                     },
                     .Rectangle => |rect| {
-                        const draw_rect = rl.Rectangle{
-                            .x = transform.position.x - rect.width / 2,
-                            .y = transform.position.y - rect.height / 2,
+                        const dest_rect = rl.Rectangle{
+                            .x = transform.position.x,
+                            .y = transform.position.y,
                             .width = rect.width,
                             .height = rect.height,
                         };
+                        const origin = rl.Vector2{ .x = rect.width / 2.0, .y = rect.height / 2.0 };
+                        const rotation_degrees = transform.rotation * 180.0 / std.math.pi; // Convert radians to degrees
+
                         if (rect.filled) {
-                            rl.drawRectangleRec(draw_rect, shape.color);
+                            rl.drawRectanglePro(dest_rect, origin, rotation_degrees, shape.color);
                         } else {
-                            rl.drawRectangleLinesEx(draw_rect, 1.0, shape.color);
+                            // For non-filled rectangles, we need to draw rotated lines
+                            const half_w = rect.width / 2.0;
+                            const half_h = rect.height / 2.0;
+                            const cos_r = @cos(transform.rotation);
+                            const sin_r = @sin(transform.rotation);
+
+                            const corners = [4]rl.Vector2{
+                                rl.Vector2{ .x = transform.position.x + (-half_w * cos_r - -half_h * sin_r), .y = transform.position.y + (-half_w * sin_r + -half_h * cos_r) },
+                                rl.Vector2{ .x = transform.position.x + (half_w * cos_r - -half_h * sin_r), .y = transform.position.y + (half_w * sin_r + -half_h * cos_r) },
+                                rl.Vector2{ .x = transform.position.x + (half_w * cos_r - half_h * sin_r), .y = transform.position.y + (half_w * sin_r + half_h * cos_r) },
+                                rl.Vector2{ .x = transform.position.x + (-half_w * cos_r - half_h * sin_r), .y = transform.position.y + (-half_w * sin_r + half_h * cos_r) },
+                            };
+
+                            for (0..4) |i| {
+                                const next = (i + 1) % 4;
+                                rl.drawLineV(corners[i], corners[next], shape.color);
+                            }
                         }
                     },
                     .Line => |line| {
-                        rl.drawLineEx(transform.position, line.end_pos, line.thickness, shape.color);
+                        rl.drawLineEx(pos, line.end_pos, line.thickness, shape.color);
                     },
                 }
             }
         }
     }
-
-    if (count > 0) {
-        std.debug.print("Rendered {d} shapes\n", .{count});
-    }
 }
 
-/// Renders text components
+/// Text rendering system
 pub fn textRenderSystem(world: *World, dt: f32) !void {
     _ = dt;
 
-    const text_id = world.getComponentId(components.Text) orelse return;
-    const transform_id = world.getComponentId(components.Transform) orelse return;
+    const transform_id = components.ComponentType.getId(components.Transform).toU32();
+    const text_id = components.ComponentType.getId(components.Text).toU32();
 
-    var query_iter = world.query(&[_]ComponentId{ text_id, transform_id }, &[_]ComponentId{});
+    var query_iter = world.query(&[_]ComponentId{ transform_id, text_id }, &[_]ComponentId{});
 
     while (query_iter.next()) |entity| {
-        if (world.getComponent(components.Text, entity)) |text| {
-            if (world.getComponent(components.Transform, entity)) |transform| {
-                const text_slice = text.getText();
-                // Convert to null-terminated string for raylib
-                var text_buffer: [256:0]u8 = undefined;
-                const len = @min(text_slice.len, 255);
-                @memcpy(text_buffer[0..len], text_slice[0..len]);
-                text_buffer[len] = 0;
-
-                rl.drawText(&text_buffer, @intFromFloat(transform.position.x), @intFromFloat(transform.position.y), @intFromFloat(text.font_size), text.color);
+        if (world.getComponent(components.Transform, entity)) |transform| {
+            if (world.getComponent(components.Text, entity)) |text| {
+                const text_str = text.getText();
+                if (text_str.len > 0) {
+                    const text_size = rl.measureText(@ptrCast(text_str), @intFromFloat(text.font_size));
+                    const draw_pos = rl.Vector2.init(
+                        transform.position.x - @as(f32, @floatFromInt(text_size)) / 2,
+                        transform.position.y - text.font_size / 2,
+                    );
+                    rl.drawText(@ptrCast(text_str), @intFromFloat(draw_pos.x), @intFromFloat(draw_pos.y), @intFromFloat(text.font_size), text.color);
+                }
             }
         }
     }
 }
 
-// ============================================================================
-// CLEANUP SYSTEMS
-// ============================================================================
-
-/// Removes entities marked for destruction
-pub fn destroySystem(world: *World, dt: f32) !void {
-    _ = dt;
-
-    const to_destroy_id = world.getComponentId(components.ToDestroy) orelse return;
-    var query_iter = world.query(&[_]ComponentId{to_destroy_id}, &[_]ComponentId{});
-
-    var entities_to_destroy = std.ArrayList(Entity).init(world.allocator);
-    defer entities_to_destroy.deinit();
+pub fn inputSystem(world: *World, dt: f32, input_manager: *InputManager) !void {
+    const input_id = components.ComponentType.getId(components.Input).toU32();
+    var query_iter = world.query(&[_]ComponentId{input_id}, &[_]ComponentId{});
 
     while (query_iter.next()) |entity| {
-        try entities_to_destroy.append(entity);
-    }
+        if (world.getComponent(components.Input, entity)) |input| {
+            // Read keyboard input using InputManager
+            input.move_left = input_manager.isKeyDown(.a) or input_manager.isKeyDown(.left);
+            input.move_right = input_manager.isKeyDown(.d) or input_manager.isKeyDown(.right);
+            input.move_up = input_manager.isKeyDown(.w) or input_manager.isKeyDown(.up);
+            input.move_down = input_manager.isKeyDown(.s) or input_manager.isKeyDown(.down);
 
-    for (entities_to_destroy.items) |entity| {
-        world.despawnEntity(entity);
+            // Handle jump with buffering
+            if (input_manager.isKeyPressed(.space)) {
+                input.jump = true;
+                input.jump_buffer_time = input.jump_buffer_max;
+            } else {
+                input.jump = false;
+                if (input.jump_buffer_time > 0) {
+                    input.jump_buffer_time -= dt;
+                }
+            }
+        }
     }
+}
+
+pub fn physicsInputSystem(world: *World, dt: f32, physics_world: *PhysicsWorld) !void {
+    const input_id = components.ComponentType.getId(components.Input).toU32();
+    const physics_id = components.ComponentType.getId(components.PhysicsBodyRef).toU32();
+
+    // Find entities with BOTH Input AND PhysicsBodyRef components
+    var query_iter = world.query(&[_]ComponentId{ input_id, physics_id }, &[_]ComponentId{});
+
+    while (query_iter.next()) |entity| {
+        if (world.getComponent(components.Input, entity)) |input| {
+            if (world.getComponent(components.PhysicsBodyRef, entity)) |physics_ref| {
+                if (physics_ref.getBody(physics_world)) |body| {
+                    // Apply horizontal movement forces
+                    var force_x: f32 = 0;
+                    if (input.move_left) force_x -= input.move_speed;
+                    if (input.move_right) force_x += input.move_speed;
+
+                    if (force_x != 0) {
+                        body.applyForce(rl.Vector2{ .x = force_x, .y = 0 });
+                    }
+
+                    // Handle jump (using velocity modification since no applyImpulse)
+                    if (input.jump or input.jump_buffer_time > 0) {
+                        const velocity = body.getVelocity();
+                        // Simple ground check: only jump if not moving up fast
+                        if (velocity.y > -50.0) {
+                            // Directly set upward velocity for jump
+                            body.setVelocity(rl.Vector2{ .x = velocity.x, .y = -input.jump_force });
+                            input.jump_buffer_time = 0; // Clear jump buffer
+                        }
+                    }
+                }
+            }
+        }
+    }
+    _ = dt; // Mark unused parameter
 }

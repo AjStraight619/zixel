@@ -11,9 +11,9 @@ const PhysicsWorld = @import("../physics/world.zig").PhysicsWorld;
 const PhysicsConfig = @import("../physics/config.zig").PhysicsConfig;
 const PhysicsBodyType = @import("../physics/body.zig").Body;
 const PhysicsShape = @import("../core/math/shapes.zig").PhysicsShape;
+const InputManager = @import("../input/input_manager.zig").InputManager;
 
-/// ECS-based game engine
-pub const ECSEngine = struct {
+pub const Engine = struct {
     allocator: std.mem.Allocator,
     world: World,
     physics_world: PhysicsWorld,
@@ -21,6 +21,8 @@ pub const ECSEngine = struct {
     gui: GUI,
     is_running: bool,
     target_fps: u32,
+    input_manager: InputManager,
+    input_context: InputContext = .Game,
 
     // Window settings
     window_width: i32,
@@ -30,6 +32,8 @@ pub const ECSEngine = struct {
     last_window_height: i32,
 
     const Self = @This();
+
+    const InputContext = enum { Game, GUI, Menu, Paused };
 
     pub const Config = struct {
         window_width: i32 = 800,
@@ -49,8 +53,8 @@ pub const ECSEngine = struct {
 
         // Create physics configuration
         const physics_config = PhysicsConfig{
-            .gravity = rl.Vector2{ .x = 0, .y = 981.0 }, // 981 pixels/s^2 downward
-            .physics_time_step = 1.0 / 60.0, // 60 FPS physics
+            .gravity = rl.Vector2{ .x = 0, .y = 300 },
+            .physics_time_step = 1.0 / 60.0,
             .allow_sleeping = true,
             .debug_draw_aabb = false,
             .debug_draw_contacts = false,
@@ -67,6 +71,7 @@ pub const ECSEngine = struct {
             .physics_world = physics_world,
             .schedule = schedule,
             .gui = gui,
+            .input_manager = InputManager.init(),
             .is_running = false,
             .target_fps = config.target_fps,
             .window_width = config.window_width,
@@ -83,6 +88,7 @@ pub const ECSEngine = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.input_manager.deinit();
         self.gui.deinit();
         self.schedule.deinit();
         self.physics_world.deinit();
@@ -107,13 +113,8 @@ pub const ECSEngine = struct {
     pub fn run(self: *Self) !void {
         self.is_running = true;
 
-        while (self.is_running and !rl.windowShouldClose()) {
+        while (self.shouldRun()) {
             const dt = rl.getFrameTime();
-
-            // Handle GUI toggle (F1 key)
-            if (rl.isKeyPressed(.f1)) {
-                self.gui.toggleVisibility();
-            }
 
             // Update physics world first (separate from ECS)
             self.physics_world.update(dt);
@@ -121,14 +122,14 @@ pub const ECSEngine = struct {
             // Sync physics bodies to ECS transforms
             self.syncPhysicsWithTransforms();
 
-            // Update ECS systems (non-rendering)
-            try self.runUpdateSystems(dt);
+            // Run the custom system schedule (for update systems + custom systems)
+            try self.schedule.runSystems(&self.world, dt);
 
             // Render
             rl.beginDrawing();
             rl.clearBackground(rl.Color.ray_white);
 
-            // Render systems (inside drawing context)
+            // Render systems (inside drawing context) - these must be here!
             try self.runRenderSystems(dt);
 
             // Render GUI on top
@@ -138,24 +139,56 @@ pub const ECSEngine = struct {
         }
     }
 
-    /// Run only the update systems (non-rendering)
-    fn runUpdateSystems(self: *Self, dt: f32) !void {
-        // Input systems
-        try systems.inputUpdateSystem(&self.world, dt);
-        try systems.playerInputSystem(&self.world, dt);
+    fn handleGUIInput(self: *Self) void {
+        // GUI toggle (F1) - always works regardless of context
+        if (self.input_manager.isKeyPressed(.f1)) {
+            self.gui.toggleVisibility();
 
-        // Physics systems
-        try systems.physicsSystem(&self.world, dt);
-        try systems.movementSystem(&self.world, dt);
+            // Update context based on GUI state
+            if (self.gui.isVisible()) {
+                self.setInputContext(.gui);
+            } else {
+                self.setInputContext(.game);
+            }
+        }
 
-        // Game logic systems
-        try systems.timerSystem(&self.world, dt);
-        try systems.lifetimeSystem(&self.world, dt);
-        try systems.healthSystem(&self.world, dt);
-        try systems.animationSystem(&self.world, dt);
+        // ESC to close GUI (only when GUI is open)
+        if (self.input_context == .gui and self.input_manager.isKeyPressed(.escape)) {
+            self.gui.setVisible(false);
+            self.setInputContext(.game);
+        }
+    }
 
-        // Cleanup systems
-        try systems.destroySystem(&self.world, dt);
+    fn handleGameInput(self: *Self, dt: f32) !void {
+        switch (self.input_context) {
+            .game => {
+                // Normal gameplay - run input systems
+                try systems.inputSystem(&self.world, dt, &self.input_manager);
+                try systems.physicsInputSystem(&self.world, dt, &self.physics_world);
+            },
+            .gui => {
+                // GUI is open - block game input
+                // (Do nothing - game input systems don't run)
+            },
+            .menu => {
+                // In menu - handle menu navigation
+                // try systems.menuInputSystem(&self.world, dt, &self.input_manager);
+            },
+            .paused => {
+                // Game paused - only allow unpause input
+                if (self.input_manager.isKeyPressed(.p)) {
+                    self.setInputContext(.game);
+                }
+            },
+        }
+    }
+
+    // TODO: Implement menu input system
+    fn handleMenuInput(self: *Self, dt: f32) !void {
+        // In menu - handle menu navigation
+        // try systems.menuInputSystem(&self.world, dt, &self.input_manager);
+        _ = dt;
+        _ = self;
     }
 
     /// Run only the rendering systems (inside drawing context)
@@ -171,6 +204,24 @@ pub const ECSEngine = struct {
     /// Stop the engine
     pub fn stop(self: *Self) void {
         self.is_running = false;
+    }
+
+    /// Start the engine (sets running state to true)
+    pub fn start(self: *Self) void {
+        self.is_running = true;
+    }
+
+    pub fn setInputContext(self: *Self, context: InputContext) void {
+        self.input_context = context;
+    }
+
+    pub fn getInputContext(self: *Self) InputContext {
+        return self.input_context;
+    }
+
+    /// Check if the engine should continue running (combines internal state with window close check)
+    pub fn shouldRun(self: *const Self) bool {
+        return self.is_running and !rl.windowShouldClose();
     }
 
     /// Create a new entity
@@ -222,235 +273,30 @@ pub const ECSEngine = struct {
         return count;
     }
 
-    /// Register all components
+    /// Register all components using comptime reflection
     fn registerComponents(self: *Self) !void {
-        // Create temporary entities just to register component types
-        const temp_entities = [_]Entity{
-            self.createEntity(), self.createEntity(), self.createEntity(), self.createEntity(),
-            self.createEntity(), self.createEntity(), self.createEntity(), self.createEntity(),
-            self.createEntity(), self.createEntity(), self.createEntity(), self.createEntity(),
-            self.createEntity(), self.createEntity(), self.createEntity(), self.createEntity(),
+        // Define all component types at comptime
+        const ComponentTypes = .{
+            components.Transform,
+            components.Velocity,
+            components.PhysicsBodyRef,
+            components.Shape,
+            components.Text,
+            components.Tag,
+            components.ToDestroy,
+            components.Camera2D,
+            components.Input,
         };
 
-        // Register basic components
-        try self.addComponent(temp_entities[0], components.Transform{});
-        try self.addComponent(temp_entities[1], components.Velocity{});
-        try self.addComponent(temp_entities[2], components.RigidBody{}); // Use default values
-        try self.addComponent(temp_entities[3], components.Collider.rectangle(32, 48));
-        try self.addComponent(temp_entities[4], components.Sprite.fromColor(rl.Color.blue));
-        try self.addComponent(temp_entities[5], components.Player{
-            .move_speed = 200.0,
-            .jump_force = 400.0,
-        });
-        try self.addComponent(temp_entities[6], components.Input{});
-        try self.addComponent(temp_entities[7], components.Health.init(100.0));
-        try self.addComponent(temp_entities[8], components.Tag{});
-
-        // Register physics components
-        try self.addComponent(temp_entities[9], components.PhysicsBodyRef.init(0));
-        try self.addComponent(temp_entities[10], components.Shape.circle(16, true));
-        try self.addComponent(temp_entities[11], components.Lifetime.init(10.0));
-
-        // Register AI components
-        try self.addComponent(temp_entities[12], components.AI{
-            .behavior = .Patrol,
-            .move_speed = 50.0,
-            .detection_radius = 100.0,
-        });
-
-        // Register shape and text components
-        try self.addComponent(temp_entities[13], components.Shape.rectangle(32, 48, true));
-        try self.addComponent(temp_entities[14], components.Text{
-            .font_size = 20.0,
-        });
-
-        // Register camera components
-        try self.addComponent(temp_entities[15], components.Camera2D.main(rl.Vector2.init(0, 0)));
-
-        // Clean up temporary entities
-        for (temp_entities) |entity| {
-            self.world.despawnEntity(entity);
+        // Register each component type using comptime iteration
+        inline for (ComponentTypes) |ComponentType| {
+            _ = try self.world.registerComponent(ComponentType);
         }
     }
 
-    // ========================================================================
-    // CONVENIENCE METHODS FOR COMMON ENTITY CREATION
-    // ========================================================================
-
-    /// Create a player entity with common components
-    pub fn createPlayer(self: *Self, position: rl.Vector2) !Entity {
-        const entity = self.createEntity();
-
-        try self.addComponent(entity, components.Transform{
-            .position = position,
-        });
-
-        try self.addComponent(entity, components.Velocity{});
-
-        try self.addComponent(entity, components.RigidBody.dynamic(1.0));
-
-        try self.addComponent(entity, components.Collider.rectangle(32, 48));
-
-        try self.addComponent(entity, components.Sprite.fromColor(rl.Color.blue));
-
-        try self.addComponent(entity, components.Player{
-            .move_speed = 200.0,
-            .jump_force = 400.0,
-        });
-
-        try self.addComponent(entity, components.Input{});
-
-        try self.addComponent(entity, components.Health.init(100.0));
-
-        var tag = components.Tag{};
-        tag.add(.Player);
-        try self.addComponent(entity, tag);
-
-        return entity;
-    }
-
-    /// Create platform (static rectangular physics body) - UPDATED WITH PHYSICS
-    pub fn createPlatform(self: *Self, position: rl.Vector2, size: rl.Vector2) !Entity {
-        const transform = components.Transform{
-            .position = position,
-            .rotation = 0.0,
-            .scale = rl.Vector2.init(1.0, 1.0),
-        };
-
-        const shape = PhysicsShape{ .rectangle = rl.Rectangle{ .x = 0, .y = 0, .width = size.x, .height = size.y } };
-        const entity = try self.createPhysicsEntity(transform, shape, true);
-
-        // Add visual shape with platform color
-        var shape_comp = components.Shape.rectangle(size.x, size.y, true);
-        shape_comp.color = rl.Color.dark_gray;
-        try self.addComponent(entity, shape_comp);
-
-        return entity;
-    }
-
-    /// Create an enemy entity
-    pub fn createEnemy(self: *Self, position: rl.Vector2) !Entity {
-        const entity = self.createEntity();
-
-        try self.addComponent(entity, components.Transform{
-            .position = position,
-        });
-
-        try self.addComponent(entity, components.Velocity{});
-
-        try self.addComponent(entity, components.RigidBody.dynamic(0.8));
-
-        try self.addComponent(entity, components.Collider.rectangle(24, 32));
-
-        try self.addComponent(entity, components.Sprite.fromColor(rl.Color.red));
-
-        try self.addComponent(entity, components.AI{
-            .behavior = .Patrol,
-            .move_speed = 50.0,
-            .detection_radius = 100.0,
-        });
-
-        try self.addComponent(entity, components.Health.init(50.0));
-
-        var tag = components.Tag{};
-        tag.add(.Enemy);
-        try self.addComponent(entity, tag);
-
-        return entity;
-    }
-
-    /// Create a collectible item
-    pub fn createCollectible(self: *Self, position: rl.Vector2, lifetime: f32) !Entity {
-        const entity = self.createEntity();
-
-        try self.addComponent(entity, components.Transform{
-            .position = position,
-        });
-
-        try self.addComponent(entity, components.Collider.circle(16));
-
-        var shape = components.Shape.circle(16, true);
-        shape.color = rl.Color.gold;
-        try self.addComponent(entity, shape);
-
-        try self.addComponent(entity, components.Lifetime.init(lifetime));
-
-        var tag = components.Tag{};
-        tag.add(.Collectible);
-        try self.addComponent(entity, tag);
-
-        return entity;
-    }
-
-    /// Create a projectile entity
-    pub fn createProjectile(self: *Self, position: rl.Vector2, velocity: rl.Vector2, lifetime: f32) !Entity {
-        const entity = self.createEntity();
-
-        try self.addComponent(entity, components.Transform{
-            .position = position,
-        });
-
-        try self.addComponent(entity, components.Velocity{
-            .linear = velocity,
-        });
-
-        try self.addComponent(entity, components.RigidBody{
-            .body_type = .Kinematic,
-            .gravity_scale = 0.0,
-        });
-
-        try self.addComponent(entity, components.Collider.circle(4));
-
-        var shape = components.Shape.circle(4, true);
-        shape.color = rl.Color.yellow;
-        try self.addComponent(entity, shape);
-
-        try self.addComponent(entity, components.Lifetime.init(lifetime));
-
-        var tag = components.Tag{};
-        tag.add(.Projectile);
-        try self.addComponent(entity, tag);
-
-        return entity;
-    }
-
-    /// Create a camera entity
-    pub fn createCamera(self: *Self, target: rl.Vector2) !Entity {
-        const entity = self.createEntity();
-
-        try self.addComponent(entity, components.Transform{
-            .position = rl.Vector2.init(0, 0),
-        });
-
-        try self.addComponent(entity, components.Camera2D.main(target));
-
-        return entity;
-    }
-
-    /// Create a text entity
-    pub fn createText(self: *Self, position: rl.Vector2, text: []const u8, font_size: f32) !Entity {
-        const entity = self.createEntity();
-
-        try self.addComponent(entity, components.Transform{
-            .position = position,
-        });
-
-        var text_component = components.Text{
-            .font_size = font_size,
-        };
-        text_component.setText(text);
-        try self.addComponent(entity, text_component);
-
-        return entity;
-    }
-
-    // ========================================================================
-    // UTILITY METHODS
-    // ========================================================================
-
     /// Find the first entity with a specific tag
     pub fn findEntityWithTag(self: *Self, tag: components.Tag.TagType) ?Entity {
-        const tag_id = self.world.getComponentId(components.Tag) orelse return null;
+        const tag_id = components.ComponentType.getId(components.Tag).toU32();
 
         var query_iter = self.world.query(&[_]@TypeOf(tag_id){tag_id}, &[_]@TypeOf(tag_id){});
 
@@ -469,7 +315,7 @@ pub const ECSEngine = struct {
     pub fn findEntitiesWithTag(self: *Self, tag: components.Tag.TagType, allocator: std.mem.Allocator) !std.ArrayList(Entity) {
         var entities = std.ArrayList(Entity).init(allocator);
 
-        const tag_id = self.world.getComponentId(components.Tag) orelse return entities;
+        const tag_id = components.ComponentType.getId(components.Tag).toU32();
 
         var query_iter = self.world.query(&[_]@TypeOf(tag_id){tag_id}, &[_]@TypeOf(tag_id){});
 
@@ -508,60 +354,82 @@ pub const ECSEngine = struct {
         self.gui.toggleVisibility();
     }
 
-    /// Create a physics body and attach it to an entity
-    pub fn createPhysicsEntity(self: *Self, transform: components.Transform, shape: PhysicsShape, is_static: bool) !Entity {
+    /// Create a static physics body (can't move, like walls and platforms)
+    pub fn createStaticBody(self: *Self, transform: components.Transform, shape: PhysicsShape, color: ?rl.Color) !Entity {
         const entity = self.createEntity();
-
-        // Add transform component
         try self.addComponent(entity, transform);
 
-        // Create physics body
-        const physics_body = if (is_static)
-            PhysicsBodyType.initStatic(shape, transform.position, .{})
-        else
-            PhysicsBodyType.initDynamic(shape, transform.position, .{});
-
-        // Add to physics world
+        const physics_body = PhysicsBodyType.initStatic(shape, transform.position, .{
+            .rotation = transform.rotation,
+        });
         const body_id = try self.physics_world.addBody(physics_body);
-
-        // Add physics body reference component
         try self.addComponent(entity, components.PhysicsBodyRef.init(body_id));
+
+        // Automatically add visual component
+        if (color) |c| {
+            var visual = switch (shape) {
+                .rectangle => |rect| components.Shape.rectangle(rect.width, rect.height, true),
+                .circle => |circle| components.Shape.circle(circle.radius, true),
+            };
+            visual.color = c;
+            try self.addComponent(entity, visual);
+        }
 
         return entity;
     }
 
-    /// Create a dynamic physics object
-    pub fn createDynamicObject(self: *Self, position: rl.Vector2, shape: PhysicsShape) !Entity {
-        const transform = components.Transform{
-            .position = position,
-            .rotation = 0.0,
-            .scale = rl.Vector2.init(1.0, 1.0),
-        };
+    /// Create a dynamic physics body (affected by gravity and forces, like balls and boxes)
+    pub fn createDynamicBody(self: *Self, transform: components.Transform, shape: PhysicsShape, color: ?rl.Color) !Entity {
+        const entity = self.createEntity();
+        try self.addComponent(entity, transform);
 
-        const entity = try self.createPhysicsEntity(transform, shape, false);
+        const physics_body = PhysicsBodyType.initDynamic(shape, transform.position, .{
+            .rotation = transform.rotation,
+        });
+        const body_id = try self.physics_world.addBody(physics_body);
+        try self.addComponent(entity, components.PhysicsBodyRef.init(body_id));
 
-        // Add visual representation based on shape WITH COLORS
-        switch (shape) {
-            .circle => |circle| {
-                var visual_shape = components.Shape.circle(circle.radius, true);
-                visual_shape.color = rl.Color.blue; // Make circles blue
-                try self.addComponent(entity, visual_shape);
-            },
-            .rectangle => |rect| {
-                var visual_shape = components.Shape.rectangle(rect.width, rect.height, true);
-                visual_shape.color = rl.Color.red; // Make rectangles red
-                try self.addComponent(entity, visual_shape);
-            },
+        // Automatically add visual component
+        if (color) |c| {
+            var visual = switch (shape) {
+                .rectangle => |rect| components.Shape.rectangle(rect.width, rect.height, true),
+                .circle => |circle| components.Shape.circle(circle.radius, true),
+            };
+            visual.color = c;
+            try self.addComponent(entity, visual);
         }
 
-        std.debug.print("Created dynamic physics object at ({d:.1}, {d:.1})\n", .{ position.x, position.y });
+        return entity;
+    }
+
+    /// Create a kinematic physics body (move under direct control, like player paddles)
+    pub fn createKinematicBody(self: *Self, transform: components.Transform, shape: PhysicsShape, color: ?rl.Color) !Entity {
+        const entity = self.createEntity();
+        try self.addComponent(entity, transform);
+
+        const physics_body = PhysicsBodyType.initKinematic(shape, transform.position, .{
+            .rotation = transform.rotation,
+        });
+        const body_id = try self.physics_world.addBody(physics_body);
+        try self.addComponent(entity, components.PhysicsBodyRef.init(body_id));
+
+        // Automatically add visual component
+        if (color) |c| {
+            var visual = switch (shape) {
+                .rectangle => |rect| components.Shape.rectangle(rect.width, rect.height, true),
+                .circle => |circle| components.Shape.circle(circle.radius, true),
+            };
+            visual.color = c;
+            try self.addComponent(entity, visual);
+        }
+
         return entity;
     }
 
     /// Sync physics bodies with transform components
     pub fn syncPhysicsWithTransforms(self: *Self) void {
-        const physics_body_id = self.world.getComponentId(components.PhysicsBodyRef) orelse return;
-        const transform_id = self.world.getComponentId(components.Transform) orelse return;
+        const physics_body_id = components.ComponentType.getId(components.PhysicsBodyRef).toU32();
+        const transform_id = components.ComponentType.getId(components.Transform).toU32();
 
         var query_iter = self.world.query(&[_]ComponentId{ physics_body_id, transform_id }, &[_]ComponentId{});
 
@@ -572,5 +440,132 @@ pub const ECSEngine = struct {
                 }
             }
         }
+    }
+
+    /// Create platform (static rectangular physics body) - convenience method
+    pub fn createPlatform(self: *Self, position: rl.Vector2, size: rl.Vector2) !Entity {
+        const transform = components.Transform{
+            .position = position,
+            .rotation = 0.0,
+            .scale = rl.Vector2.init(1.0, 1.0),
+        };
+
+        const shape = PhysicsShape{ .rectangle = rl.Rectangle{ .x = 0, .y = 0, .width = size.x, .height = size.y } };
+        return try self.createStaticBody(transform, shape, rl.Color.dark_gray);
+    }
+
+    /// Create kinematic entity (for backwards compatibility with examples)
+    pub fn createKinematicEntity(self: *Self, transform: components.Transform, shape: PhysicsShape) !Entity {
+        return try self.createKinematicBody(transform, shape, null);
+    }
+
+    /// Create physics entity (backwards compatibility - use createStaticBody/createDynamicBody instead)
+    pub fn createPhysicsEntity(self: *Self, transform: components.Transform, shape: PhysicsShape, is_static: bool) !Entity {
+        if (is_static) {
+            return try self.createStaticBody(transform, shape, null);
+        } else {
+            return try self.createDynamicBody(transform, shape, null);
+        }
+    }
+
+    /// Create physics entity with specific type (backwards compatibility)
+    pub fn createPhysicsEntityWithType(self: *Self, transform: components.Transform, shape: PhysicsShape, body_type: enum { Static, Dynamic, Kinematic }) !Entity {
+        switch (body_type) {
+            .Static => return try self.createStaticBody(transform, shape, null),
+            .Dynamic => return try self.createDynamicBody(transform, shape, null),
+            .Kinematic => return try self.createKinematicBody(transform, shape, null),
+        }
+    }
+
+    /// Create dynamic object (backwards compatibility)
+    pub fn createDynamicObject(self: *Self, position: rl.Vector2, shape: PhysicsShape) !Entity {
+        const transform = components.Transform{ .position = position };
+        return try self.createDynamicBody(transform, shape, null);
+    }
+
+    /// Create a text entity
+    pub fn createText(self: *Self, position: rl.Vector2, text: []const u8, font_size: f32) !Entity {
+        const entity = self.createEntity();
+
+        try self.addComponent(entity, components.Transform{
+            .position = position,
+        });
+
+        var text_component = components.Text{
+            .font_size = font_size,
+        };
+        text_component.setText(text);
+        try self.addComponent(entity, text_component);
+
+        return entity;
+    }
+
+    /// Create a camera entity (simplified - just creates an entity with Transform)
+    pub fn createCamera(self: *Self, target: rl.Vector2) !Entity {
+        const entity = self.createEntity();
+
+        try self.addComponent(entity, components.Transform{
+            .position = target,
+        });
+
+        return entity;
+    }
+
+    /// Create a minimal player entity (stub for compatibility)
+    pub fn createPlayer(self: *Self, position: rl.Vector2) !Entity {
+        const entity = self.createEntity();
+
+        try self.addComponent(entity, components.Transform{
+            .position = position,
+        });
+
+        var shape = components.Shape.rectangle(32, 48, true);
+        shape.color = rl.Color.blue;
+        try self.addComponent(entity, shape);
+
+        var tag = components.Tag{};
+        tag.add(.Player);
+        try self.addComponent(entity, tag);
+
+        return entity;
+    }
+
+    /// Create a minimal enemy entity (stub for compatibility)
+    pub fn createEnemy(self: *Self, position: rl.Vector2) !Entity {
+        const entity = self.createEntity();
+
+        try self.addComponent(entity, components.Transform{
+            .position = position,
+        });
+
+        var shape = components.Shape.rectangle(24, 32, true);
+        shape.color = rl.Color.red;
+        try self.addComponent(entity, shape);
+
+        var tag = components.Tag{};
+        tag.add(.Enemy);
+        try self.addComponent(entity, tag);
+
+        return entity;
+    }
+
+    /// Create a minimal collectible entity (stub for compatibility)
+    pub fn createCollectible(self: *Self, position: rl.Vector2, lifetime: f32) !Entity {
+        _ = lifetime; // Ignore lifetime since we don't have Lifetime component
+        const entity = self.createEntity();
+
+        try self.addComponent(entity, components.Transform{
+            .position = position,
+        });
+
+        var shape = components.Shape.circle(16, true);
+        shape.color = rl.Color.gold;
+        try self.addComponent(entity, shape);
+
+        var tag = components.Tag{};
+        tag.add(.Collectible);
+        try self.addComponent(entity, tag);
+
+        return entity;
     }
 };
