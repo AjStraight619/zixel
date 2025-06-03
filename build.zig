@@ -12,8 +12,17 @@ pub fn build(b: *std.Build) void {
     const raygui = raylib_dep.module("raygui");
     const raylib_artifact = raylib_dep.artifact("raylib");
 
+    // Expose zixel module for external projects (zig fetch)
+    _ = b.addModule("zixel", .{
+        .root_source_file = b.path("src/zixel.zig"),
+        .imports = &.{
+            .{ .name = "raylib", .module = raylib },
+            .{ .name = "raygui", .module = raygui },
+        },
+    });
+
     const lib_mod = b.createModule(.{
-        .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path("src/zixel.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -76,33 +85,31 @@ pub fn build(b: *std.Build) void {
     // Examples - much cleaner now!
     const basic_exe = createExampleExe(b, "example_basic", "examples/basic/main.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
     const run_basic = b.addRunArtifact(basic_exe);
+    if (b.args) |args| {
+        run_basic.addArgs(args);
+    }
     const run_basic_step = b.step("run-basic", "Run the basic example");
     run_basic_step.dependOn(&run_basic.step);
 
     const advanced_exe = createExampleExe(b, "example_advanced", "examples/advanced/main.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
     const run_advanced = b.addRunArtifact(advanced_exe);
+    if (b.args) |args| {
+        run_advanced.addArgs(args);
+    }
     const run_advanced_step = b.step("run-advanced", "Run the advanced example");
     run_advanced_step.dependOn(&run_advanced.step);
 
-    const ecs_demo_exe = createExampleExe(b, "ecs_demo", "examples/ecs_demo/main.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
-    const run_ecs_demo = b.addRunArtifact(ecs_demo_exe);
-    const run_ecs_demo_step = b.step("run-ecs-demo", "Run the ECS demo");
-    run_ecs_demo_step.dependOn(&run_ecs_demo.step);
+    const pong_exe = createExampleExe(b, "pong", "examples/pong/main.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
+    const run_pong = b.addRunArtifact(pong_exe);
+    if (b.args) |args| {
+        run_pong.addArgs(args);
+    }
+    const run_pong_step = b.step("run-pong", "Run the Pong game");
+    run_pong_step.dependOn(&run_pong.step);
 
-    // Legacy examples (temporarily disabled while focusing on ECS)
-    // const circle_vs_rect_exe = createExampleExe(b, "circle_vs_rect", "tests/rectvscircle.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
-    // const run_circle_vs_rect = b.addRunArtifact(circle_vs_rect_exe);
-    // const run_circle_vs_rect_step = b.step("run-circle-vs-rect", "Run the circle vs rect test");
-    // run_circle_vs_rect_step.dependOn(&run_circle_vs_rect.step);
-
-    // const physics_verification_exe = createExampleExe(b, "physics_verification", "examples/physics_verification.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
-    // const run_physics_verification = b.addRunArtifact(physics_verification_exe);
-    // const run_physics_verification_step = b.step("run-physics-tests", "Run the physics verification tests");
-    // run_physics_verification_step.dependOn(&run_physics_verification.step);
-
-    // Debug application for testing rendering
-    const debug_render_exe = createExampleExe(b, "debug_render", "debug_render.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize);
-    const run_debug_render = b.addRunArtifact(debug_render_exe);
-    const debug_step = b.step("debug-render", "Run debug render test");
-    debug_step.dependOn(&run_debug_render.step);
+    // Build all examples (just builds, doesn't run)
+    const examples_step = b.step("examples", "Build all examples");
+    examples_step.dependOn(&basic_exe.step);
+    examples_step.dependOn(&advanced_exe.step);
+    examples_step.dependOn(&pong_exe.step);
 }

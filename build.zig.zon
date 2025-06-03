@@ -1,10 +1,7 @@
 .{
-    .name = .Zig2dEngine,
-
-    .version = "0.0.0",
-
-    .fingerprint = 0x2b1757550cb3eac, // Changing this has security and trust implications.
-
+    .name = .zixel,
+    .version = "0.2.0",
+    .fingerprint = 0x35023c83e8b48f17, // Changing this has security and trust implications.
     .minimum_zig_version = "0.14.0",
 
     .dependencies = .{
@@ -17,8 +14,8 @@
         "build.zig",
         "build.zig.zon",
         "src",
-        // For example...
-        //"LICENSE",
-        //"README.md",
+        "examples",
+        "LICENSE",
+        "README.md",
     },
 }
