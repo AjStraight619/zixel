@@ -3,7 +3,7 @@ const Vector2 = rl.Vector2;
 
 pub const PhysicsConfig = struct {
     // World settings
-    gravity: Vector2 = Vector2{ .x = 0, .y = 9.81 },
+    gravity: Vector2 = Vector2{ .x = 0, .y = 5 },
 
     // Solver settings
     position_iterations: u32 = 3, // Number of position correction iterations

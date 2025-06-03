@@ -52,22 +52,23 @@ pub const PhysicsWorld = struct {
     }
 
     fn stepPhysics(self: *Self, dt: f32) void {
-        // Apply gravity and integrate forces
+        // Apply gravity and integrate forces - ONLY to dynamic bodies
         for (self.bodies.items) |*body| {
             if (body.isDynamic() and !body.isSleeping()) {
-                // Apply gravity
+                // Apply gravity with gravity scale
                 const gravity_force = Vector2{
-                    .x = self.config.gravity.x * body.kind.Dynamic.mass,
-                    .y = self.config.gravity.y * body.kind.Dynamic.mass,
+                    .x = self.config.gravity.x * body.kind.Dynamic.mass * body.kind.Dynamic.gravity_scale,
+                    .y = self.config.gravity.y * body.kind.Dynamic.mass * body.kind.Dynamic.gravity_scale,
                 };
                 body.applyForce(gravity_force);
             }
         }
 
-        // Velocity iterations - integrate velocities
+        // Velocity iterations - integrate velocities for all movable bodies
         for (0..self.config.velocity_iterations) |_| {
             for (self.bodies.items) |*body| {
-                if (body.isDynamic() and !body.isSleeping()) {
+                // Update dynamic bodies (with physics forces) and kinematic bodies (velocity-based movement)
+                if ((body.isDynamic() and !body.isSleeping()) or body.isKinematic()) {
                     body.update(dt);
                 }
             }
@@ -76,7 +77,7 @@ pub const PhysicsWorld = struct {
         // Collision detection and response
         self.detectAndResolveCollisions();
 
-        // Handle sleeping bodies if enabled
+        // Handle sleeping bodies if enabled (only applies to dynamic bodies)
         if (self.config.allow_sleeping) {
             self.updateSleepingBodies(dt);
         }
@@ -91,8 +92,11 @@ pub const PhysicsWorld = struct {
             while (j < self.bodies.items.len) : (j += 1) {
                 var body2_ptr = &self.bodies.items[j];
 
-                // Skip collision between two static bodies
-                if (!body1_ptr.isDynamic() and !body2_ptr.isDynamic()) {
+                // Skip collision between two static bodies only (kinematic bodies participate)
+                const body1_movable = body1_ptr.isDynamic() or body1_ptr.isKinematic();
+                const body2_movable = body2_ptr.isDynamic() or body2_ptr.isKinematic();
+
+                if (!body1_movable and !body2_movable) {
                     continue;
                 }
 
@@ -108,9 +112,9 @@ pub const PhysicsWorld = struct {
                 if (aabb1.intersects(aabb2)) {
                     // Narrowphase: Detailed collision detection
                     if (checkBodiesCollision(body1_ptr, body2_ptr)) |manifold| {
-                        // Wake up bodies involved in collision
-                        body1_ptr.wakeUp();
-                        body2_ptr.wakeUp();
+                        // Wake up dynamic bodies involved in collision (kinematic bodies don't sleep)
+                        if (body1_ptr.isDynamic()) body1_ptr.wakeUp();
+                        if (body2_ptr.isDynamic()) body2_ptr.wakeUp();
 
                         if (self.config.debug_draw_contacts) {
                             std.debug.print("Collision between body {} and {} at ({:.2}, {:.2}) with penetration {:.3}\n", .{ manifold.body1_id, manifold.body2_id, manifold.point.x, manifold.point.y, manifold.penetration });
@@ -233,8 +237,11 @@ pub const PhysicsWorld = struct {
             while (j < self.bodies.items.len) : (j += 1) {
                 var body2_ptr = &self.bodies.items[j];
 
-                // Skip collision between two static bodies
-                if (!body1_ptr.isDynamic() and !body2_ptr.isDynamic()) {
+                // Skip collision between two static bodies only (kinematic bodies participate)
+                const body1_movable = body1_ptr.isDynamic() or body1_ptr.isKinematic();
+                const body2_movable = body2_ptr.isDynamic() or body2_ptr.isKinematic();
+
+                if (!body1_movable and !body2_movable) {
                     continue;
                 }
 

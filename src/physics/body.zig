@@ -5,10 +5,18 @@ const Vector2 = rl.Vector2;
 const Rectangle = rl.Rectangle;
 const AABB = @import("../core/math/aabb.zig").AABB;
 
+pub const KinematicBodyOptions = struct {
+    rotation: f32 = 0.0,
+    velocity: Vector2 = Vector2{ .x = 0.0, .y = 0.0 },
+    mass: f32 = 1.0,
+    restitution: f32 = 0.5,
+    friction: f32 = 0.5,
+};
+
 pub const StaticBodyOptions = struct {
     rotation: f32 = 0.0,
-    restitution: f32 = 0.5, // How bouncy the static surface is
-    friction: f32 = 0.7, // Surface friction (higher = more grip)
+    restitution: f32 = 0.5,
+    friction: f32 = 0.7,
 };
 
 pub const DynamicBodyOptions = struct {
@@ -17,6 +25,7 @@ pub const DynamicBodyOptions = struct {
     acceleration: Vector2 = Vector2{ .x = 0.0, .y = 0.0 },
     angular_velocity: f32 = 0.0,
     angular_acceleration: f32 = 0.0,
+    gravity_scale: f32 = 1.0,
     mass: f32 = 1.0,
     inertia: f32 = 1.0,
     restitution: f32 = 0.5,
@@ -28,6 +37,7 @@ pub const Body = struct {
     kind: union(enum) {
         Static: StaticBody,
         Dynamic: DynamicBody,
+        Kinematic: KinematicBody,
     },
 
     pub fn initStatic(shape: PhysicsShape, position: Vector2, opts: StaticBodyOptions) Body {
@@ -42,9 +52,16 @@ pub const Body = struct {
         };
     }
 
+    pub fn initKinematic(shape: PhysicsShape, position: Vector2, opts: KinematicBodyOptions) Body {
+        return Body{
+            .kind = .{ .Kinematic = KinematicBody.init(shape, position, opts) },
+        };
+    }
+
     pub fn update(self: *Body, deltaTime: f32) void {
         switch (self.kind) {
             .Dynamic => |*dyn_body| dyn_body.update(deltaTime),
+            .Kinematic => |*kin_body| kin_body.update(deltaTime),
             .Static => |_| {},
         }
     }
@@ -52,13 +69,29 @@ pub const Body = struct {
     pub fn applyForce(self: *Body, force: Vector2) void {
         switch (self.kind) {
             .Dynamic => |*dyn_body| dyn_body.applyForce(force),
+            .Kinematic => |_| {}, // Kinematic bodies don't respond to forces
             .Static => |_| {},
+        }
+    }
+
+    pub fn applyImpulse(self: *Body, impulse: Vector2) void {
+        switch (self.kind) {
+            .Dynamic => |*dyn_body| {
+                // Impulse = instant velocity change
+                dyn_body.velocity = dyn_body.velocity.add(impulse.scale(1.0 / dyn_body.mass));
+            },
+            .Kinematic => |*kin_body| {
+                // Kinematic bodies can have velocity set directly
+                kin_body.velocity = kin_body.velocity.add(impulse.scale(1.0 / kin_body.mass));
+            },
+            .Static => {}, // Static bodies don't respond to impulses
         }
     }
 
     pub fn draw(self: *const Body, color: rl.Color) void {
         switch (self.kind) {
             .Dynamic => |dyn_body| dyn_body.draw(color),
+            .Kinematic => |kin_body| kin_body.draw(color),
             .Static => |stat_body| stat_body.draw(color),
         }
     }
@@ -66,6 +99,7 @@ pub const Body = struct {
     pub fn aabb(self: *const Body) AABB {
         return switch (self.kind) {
             .Dynamic => |dyn_body| dyn_body.aabb(),
+            .Kinematic => |kin_body| kin_body.aabb(),
             .Static => |stat_body| stat_body.aabb(),
         };
     }
@@ -73,6 +107,15 @@ pub const Body = struct {
     pub fn isDynamic(self: Body) bool {
         return switch (self.kind) {
             .Dynamic => true,
+            .Kinematic => false,
+            .Static => false,
+        };
+    }
+
+    pub fn isKinematic(self: Body) bool {
+        return switch (self.kind) {
+            .Kinematic => true,
+            .Dynamic => false,
             .Static => false,
         };
     }
@@ -80,6 +123,7 @@ pub const Body = struct {
     pub fn getShape(self: *const Body) PhysicsShape {
         return switch (self.kind) {
             .Dynamic => |dyn_body| dyn_body.shape,
+            .Kinematic => |kin_body| kin_body.shape,
             .Static => |stat_body| stat_body.shape,
         };
     }
@@ -87,13 +131,23 @@ pub const Body = struct {
     pub fn getPosition(self: *const Body) Vector2 {
         return switch (self.kind) {
             .Dynamic => |dyn_body| dyn_body.position,
+            .Kinematic => |kin_body| kin_body.position,
             .Static => |stat_body| stat_body.position,
         };
+    }
+
+    pub fn setPosition(self: *Body, position: Vector2) void {
+        switch (self.kind) {
+            .Dynamic => |*dyn_body| dyn_body.position = position,
+            .Kinematic => |*kin_body| kin_body.position = position,
+            .Static => |*stat_body| stat_body.position = position,
+        }
     }
 
     pub fn getRotation(self: *const Body) f32 {
         return switch (self.kind) {
             .Dynamic => |dyn_body| dyn_body.rotation,
+            .Kinematic => |kin_body| kin_body.rotation,
             .Static => |stat_body| stat_body.rotation,
         };
     }
@@ -102,6 +156,7 @@ pub const Body = struct {
     pub fn getRestitution(self: *const Body) f32 {
         return switch (self.kind) {
             .Dynamic => |dyn_body| dyn_body.restitution,
+            .Kinematic => |kin_body| kin_body.restitution,
             .Static => |stat_body| stat_body.restitution,
         };
     }
@@ -110,6 +165,7 @@ pub const Body = struct {
     pub fn getFriction(self: *const Body) f32 {
         return switch (self.kind) {
             .Dynamic => |dyn_body| dyn_body.friction,
+            .Kinematic => |kin_body| kin_body.friction,
             .Static => |stat_body| stat_body.friction,
         };
     }
@@ -118,6 +174,7 @@ pub const Body = struct {
     pub fn isSleeping(self: *const Body) bool {
         return switch (self.kind) {
             .Dynamic => |dyn_body| dyn_body.is_sleeping,
+            .Kinematic => false, // Kinematic bodies are never considered "sleeping"
             .Static => false, // Static bodies are never considered "sleeping"
         };
     }
@@ -128,6 +185,7 @@ pub const Body = struct {
                 dyn_body.is_sleeping = false;
                 dyn_body.sleep_time = 0.0;
             },
+            .Kinematic => {}, // Kinematic bodies don't need waking
             .Static => {}, // Static bodies don't need waking
         }
     }
@@ -139,7 +197,24 @@ pub const Body = struct {
                 dyn_body.velocity = Vector2{ .x = 0.0, .y = 0.0 };
                 dyn_body.angular_velocity = 0.0;
             },
+            .Kinematic => {}, // Kinematic bodies don't sleep
             .Static => {}, // Static bodies don't sleep
+        }
+    }
+
+    pub fn getVelocity(self: *const Body) Vector2 {
+        return switch (self.kind) {
+            .Dynamic => |dyn_body| dyn_body.velocity,
+            .Kinematic => |kin_body| kin_body.velocity,
+            .Static => Vector2{ .x = 0.0, .y = 0.0 },
+        };
+    }
+
+    pub fn setVelocity(self: *Body, velocity: Vector2) void {
+        switch (self.kind) {
+            .Dynamic => |*dyn_body| dyn_body.velocity = velocity,
+            .Kinematic => |*kin_body| kin_body.velocity = velocity,
+            .Static => {}, // Static bodies don't have velocity
         }
     }
 };
@@ -170,6 +245,47 @@ pub const StaticBody = struct {
     }
 };
 
+pub const KinematicBody = struct {
+    shape: PhysicsShape,
+    position: Vector2,
+    rotation: f32 = 0.0,
+    velocity: Vector2 = Vector2{ .x = 0.0, .y = 0.0 },
+    mass: f32 = 1.0,
+    restitution: f32 = 0.5,
+    friction: f32 = 0.5,
+
+    const Self = @This();
+
+    pub fn init(shape: PhysicsShape, position: Vector2, opts: KinematicBodyOptions) KinematicBody {
+        return KinematicBody{
+            .shape = shape,
+            .position = position,
+            .rotation = opts.rotation,
+            .velocity = opts.velocity,
+            .mass = opts.mass,
+            .restitution = opts.restitution,
+            .friction = opts.friction,
+        };
+    }
+
+    pub fn update(self: *KinematicBody, deltaTime: f32) void {
+        // Kinematic bodies move based on their velocity, but don't respond to forces
+        self.position = self.position.add(self.velocity.scale(deltaTime));
+    }
+
+    pub fn aabb(self: KinematicBody) AABB {
+        return computeAabb(self.shape, self.position, self.rotation);
+    }
+
+    pub fn draw(self: KinematicBody, color: rl.Color) void {
+        return drawShape(self.shape, self.position, self.rotation, color);
+    }
+
+    pub fn setVelocity(self: *KinematicBody, velocity: Vector2) void {
+        self.velocity = velocity;
+    }
+};
+
 pub const DynamicBody = struct {
     shape: PhysicsShape,
     position: Vector2,
@@ -178,6 +294,7 @@ pub const DynamicBody = struct {
     acceleration: Vector2 = Vector2{ .x = 0.0, .y = 0.0 },
     angular_velocity: f32 = 0.0,
     angular_acceleration: f32 = 0.0,
+    gravity_scale: f32 = 1.0,
     mass: f32 = 1.0,
     inertia: f32 = 1.0,
     restitution: f32 = 0.5,
@@ -198,6 +315,7 @@ pub const DynamicBody = struct {
             .acceleration = opts.acceleration,
             .angular_velocity = opts.angular_velocity,
             .angular_acceleration = opts.angular_acceleration,
+            .gravity_scale = opts.gravity_scale,
             .mass = opts.mass,
             .inertia = opts.inertia,
             .restitution = opts.restitution,

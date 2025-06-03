@@ -8,21 +8,36 @@ const Vector2 = rl.Vector2;
 pub const CollisionResponse = struct {
     /// Resolve collision between two bodies using impulse-based method
     pub fn resolveCollision(body1: *Body, body2: *Body, manifold: ContactManifold, restitution: f32) void {
-        // Only resolve if at least one body is dynamic
+        // Kinematic and dynamic bodies participate in collisions, static bodies don't
+        const body1_movable = body1.isDynamic() or body1.isKinematic();
+        const body2_movable = body2.isDynamic() or body2.isKinematic();
+
+        if (!body1_movable and !body2_movable) return;
+
+        // Only dynamic bodies respond to impulses, kinematic bodies have infinite mass for impulse calculations
         const body1_dynamic = body1.isDynamic();
         const body2_dynamic = body2.isDynamic();
 
-        if (!body1_dynamic and !body2_dynamic) return;
-
-        // Get masses (infinite mass for static bodies)
+        // Get masses (infinite mass for static/kinematic bodies)
         const mass1 = if (body1_dynamic) body1.kind.Dynamic.mass else std.math.inf(f32);
         const mass2 = if (body2_dynamic) body2.kind.Dynamic.mass else std.math.inf(f32);
         const inv_mass1 = if (body1_dynamic) 1.0 / mass1 else 0.0;
         const inv_mass2 = if (body2_dynamic) 1.0 / mass2 else 0.0;
 
-        // Get velocities
-        const vel1 = if (body1_dynamic) body1.kind.Dynamic.velocity else Vector2{ .x = 0.0, .y = 0.0 };
-        const vel2 = if (body2_dynamic) body2.kind.Dynamic.velocity else Vector2{ .x = 0.0, .y = 0.0 };
+        // Get velocities (kinematic bodies have their velocity, static bodies are always at rest)
+        const vel1 = if (body1_dynamic)
+            body1.kind.Dynamic.velocity
+        else if (body1.isKinematic())
+            body1.kind.Kinematic.velocity
+        else
+            Vector2{ .x = 0.0, .y = 0.0 };
+
+        const vel2 = if (body2_dynamic)
+            body2.kind.Dynamic.velocity
+        else if (body2.isKinematic())
+            body2.kind.Kinematic.velocity
+        else
+            Vector2{ .x = 0.0, .y = 0.0 };
 
         // Relative velocity
         const rel_vel = Vector2{
@@ -41,7 +56,7 @@ pub const CollisionResponse = struct {
         var j = -(1.0 + e) * vel_along_normal;
         j /= inv_mass1 + inv_mass2;
 
-        // Apply impulse
+        // Apply impulse - ONLY to dynamic bodies
         const impulse = Vector2{
             .x = j * manifold.normal.x,
             .y = j * manifold.normal.y,
@@ -60,6 +75,7 @@ pub const CollisionResponse = struct {
 
     /// Correct positions to resolve penetration
     pub fn correctPositions(body1: *Body, body2: *Body, manifold: ContactManifold, correction_factor: f32) void {
+        // Only dynamic bodies get position correction to avoid pushing kinematic bodies around
         const body1_dynamic = body1.isDynamic();
         const body2_dynamic = body2.isDynamic();
 
@@ -102,6 +118,7 @@ pub const CollisionResponse = struct {
 
     /// Apply friction forces tangential to collision normal
     fn applyFriction(body1: *Body, body2: *Body, manifold: ContactManifold, friction: f32) void {
+        // Only dynamic bodies get friction, kinematic bodies don't respond to forces
         const body1_dynamic = body1.isDynamic();
         const body2_dynamic = body2.isDynamic();
 
@@ -113,9 +130,20 @@ pub const CollisionResponse = struct {
         const inv_mass1 = if (body1_dynamic) 1.0 / mass1 else 0.0;
         const inv_mass2 = if (body2_dynamic) 1.0 / mass2 else 0.0;
 
-        // Get velocities
-        const vel1 = if (body1_dynamic) body1.kind.Dynamic.velocity else Vector2{ .x = 0.0, .y = 0.0 };
-        const vel2 = if (body2_dynamic) body2.kind.Dynamic.velocity else Vector2{ .x = 0.0, .y = 0.0 };
+        // Get velocities (include kinematic body velocities for friction calculation)
+        const vel1 = if (body1_dynamic)
+            body1.kind.Dynamic.velocity
+        else if (body1.isKinematic())
+            body1.kind.Kinematic.velocity
+        else
+            Vector2{ .x = 0.0, .y = 0.0 };
+
+        const vel2 = if (body2_dynamic)
+            body2.kind.Dynamic.velocity
+        else if (body2.isKinematic())
+            body2.kind.Kinematic.velocity
+        else
+            Vector2{ .x = 0.0, .y = 0.0 };
 
         // Relative velocity
         const rel_vel = Vector2{
@@ -147,7 +175,7 @@ pub const CollisionResponse = struct {
         const max_friction = friction * normal_impulse;
         friction_impulse = std.math.clamp(friction_impulse, -max_friction, max_friction);
 
-        // Apply friction impulse
+        // Apply friction impulse - ONLY to dynamic bodies
         const friction_vector = Vector2{
             .x = friction_impulse * tangent_norm.x,
             .y = friction_impulse * tangent_norm.y,
