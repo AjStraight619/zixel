@@ -6,7 +6,7 @@ const CacheEntry = @import("cache_entry.zig").CacheEntry;
 const Asset = @import("cache_entry.zig").Asset;
 
 pub const AssetCache = struct {
-    allocator: Allocator,
+    alloc: Allocator,
 
     // Asset storage with metadata
     entries: std.StringHashMap(CacheEntry),
@@ -22,7 +22,7 @@ pub const AssetCache = struct {
 
     pub fn init(alloc: Allocator) Self {
         return Self{
-            .allocator = alloc,
+            .alloc = alloc,
             .entries = std.StringHashMap(CacheEntry).init(alloc),
             .max_memory_bytes = @as(usize, @intFromFloat(256.0 * 1024.0 * 1024.0)),
             .enable_stats = true,

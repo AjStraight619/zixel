@@ -7,7 +7,9 @@ const PhysicsWorld = @import("../physics/world.zig").PhysicsWorld;
 const Assets = @import("../assets/assets.zig").Assets;
 const keybinds = @import("../input/keybinds.zig");
 const GUIManager = @import("../gui/gui_manager.zig").GUI;
-const InputManager = @import("../input/input_manager.zig").InputManager;
+const inputManager = @import("../input/input_manager.zig");
+const InputManager = inputManager.InputManager;
+const GuiAction = inputManager.GuiAction;
 
 pub const EngineConfig = struct {
     window: WindowConfig = .{},
@@ -22,7 +24,7 @@ pub const UpdateFn = *const fn (engine: *Engine, allocator: std.mem.Allocator, d
 pub const RenderFn = *const fn (engine: *Engine, allocator: std.mem.Allocator) anyerror!void;
 
 pub const Engine = struct {
-    allocator: std.mem.Allocator,
+    alloc: std.mem.Allocator,
     window: Window,
     physics: PhysicsWorld,
     keybind_manager: keybinds.KeybindManager,
@@ -52,7 +54,7 @@ pub const Engine = struct {
 
         rl.setTargetFPS(@intCast(config.target_fps));
         return Self{
-            .allocator = alloc,
+            .alloc = alloc,
             .window = window,
             .physics = physics,
             .keybind_manager = kb_manager,
@@ -112,7 +114,7 @@ pub const Engine = struct {
             while (accumulator >= physics_dt) {
                 self.physics.update(physics_dt);
                 if (self.update_game) |update_fn_ptr| {
-                    try update_fn_ptr(self, self.allocator, physics_dt);
+                    try update_fn_ptr(self, self.alloc, physics_dt);
                 }
                 accumulator -= physics_dt;
             }
@@ -121,7 +123,7 @@ pub const Engine = struct {
             rl.beginDrawing();
             rl.clearBackground(rl.Color.white);
             if (self.render_game) |render_fn_ptr| {
-                try render_fn_ptr(self, self.allocator);
+                try render_fn_ptr(self, self.alloc);
             }
 
             self.gui.update(self);
@@ -135,7 +137,7 @@ pub const Engine = struct {
         return &self.input_manager;
     }
 
-    pub fn setGuiKeybind(self: *Self, action: @import("../input/input_manager.zig").GuiAction, key: rl.KeyboardKey) !void {
+    pub fn setGuiKeybind(self: *Self, action: GuiAction, key: rl.KeyboardKey) !void {
         try self.input_manager.setGuiKeybind(action, key);
     }
 

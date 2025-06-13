@@ -23,13 +23,13 @@ pub const Assets = struct {
 
     // Helper to build full paths
     fn buildPath(self: *Self, path: []const u8) ![]const u8 {
-        return try std.fs.path.join(self._cache.allocator, &[_][]const u8{ self.base_path, path });
+        return try std.fs.path.join(self._cache.alloc, &[_][]const u8{ self.base_path, path });
     }
 
     // Clean public API methods
     pub fn loadTexture(self: *Self, path: []const u8) !rl.Texture {
         const full_path = try self.buildPath(path);
-        defer self._cache.allocator.free(full_path);
+        defer self._cache.alloc.free(full_path);
 
         if (self.auto_cache) {
             return self._cache.getTexture(full_path);
@@ -40,7 +40,7 @@ pub const Assets = struct {
 
     pub fn loadSound(self: *Self, path: []const u8) !rl.Sound {
         const full_path = try self.buildPath(path);
-        defer self._cache.allocator.free(full_path);
+        defer self._cache.alloc.free(full_path);
 
         if (self.auto_cache) {
             return self._cache.getSound(full_path);
@@ -51,7 +51,7 @@ pub const Assets = struct {
 
     pub fn loadMusic(self: *Self, path: []const u8) !rl.Music {
         const full_path = try self.buildPath(path);
-        defer self._cache.allocator.free(full_path);
+        defer self._cache.alloc.free(full_path);
 
         if (self.auto_cache) {
             return self._cache.getMusic(full_path);
@@ -62,7 +62,7 @@ pub const Assets = struct {
 
     pub fn loadFont(self: *Self, path: []const u8) !rl.Font {
         const full_path = try self.buildPath(path);
-        defer self.cache.allocator.free(full_path);
+        defer self._cache.alloc.free(full_path);
 
         if (self.auto_cache) {
             return self._cache.getFont(full_path);
