@@ -4,21 +4,13 @@ const rlg = @import("raygui");
 const Allocator = std.mem.Allocator;
 const Engine = @import("../engine/engine.zig").Engine;
 const LayoutInfo = @import("gui_manager.zig").LayoutInfo;
-
-pub const BodyType = enum {
-    static,
-    dynamic,
-};
-
-pub const ShapeType = enum {
-    rectangle,
-    circle,
-};
+const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
+const Body = @import("../physics/body.zig").Body;
 
 pub const ObjectCreation = struct {
     alloc: Allocator,
-    selected_body_type: BodyType = .dynamic,
-    selected_shape_type: ShapeType = .rectangle,
+    selected_body_is_dynamic: bool = true,
+    selected_shape_is_rectangle: bool = true,
     // Parameters for object creation
     object_width: f32 = 50.0,
     object_height: f32 = 50.0,
@@ -76,10 +68,10 @@ pub const ObjectCreation = struct {
             .height = item_height,
         };
 
-        var active_body_type: i32 = @intFromEnum(self.selected_body_type);
+        var active_body_type: i32 = if (self.selected_body_is_dynamic) 1 else 0;
         const body_type_result = rlg.toggleGroup(body_type_toggle_rect, "Static;Dynamic", &active_body_type);
         if (body_type_result >= 0) {
-            self.selected_body_type = @enumFromInt(active_body_type);
+            self.selected_body_is_dynamic = (active_body_type == 1);
         }
         y_offset += item_height + 8;
 
@@ -100,10 +92,10 @@ pub const ObjectCreation = struct {
             .height = item_height,
         };
 
-        var active_shape_type: i32 = @intFromEnum(self.selected_shape_type);
+        var active_shape_type: i32 = if (self.selected_shape_is_rectangle) 0 else 1;
         const shape_type_result = rlg.toggleGroup(shape_type_toggle_rect, "Rectangle;Circle", &active_shape_type);
         if (shape_type_result >= 0) {
-            self.selected_shape_type = @enumFromInt(active_shape_type);
+            self.selected_shape_is_rectangle = (active_shape_type == 0);
         }
         y_offset += item_height + 8;
 
@@ -125,63 +117,60 @@ pub const ObjectCreation = struct {
         }, "Shape Parameters");
         y_offset += if (layout_info.is_compact) 12.0 else 15.0;
 
-        switch (self.selected_shape_type) {
-            .rectangle => {
-                // Width
-                const width_label_rect = rl.Rectangle{
-                    .x = content_rect.x + margin,
-                    .y = content_rect.y + y_offset,
-                    .width = label_width,
-                    .height = item_height,
-                };
-                _ = rlg.label(width_label_rect, "Width:");
+        if (self.selected_shape_is_rectangle) {
+            // Width
+            const width_label_rect = rl.Rectangle{
+                .x = content_rect.x + margin,
+                .y = content_rect.y + y_offset,
+                .width = label_width,
+                .height = item_height,
+            };
+            _ = rlg.label(width_label_rect, "Width:");
 
-                const width_slider_rect = rl.Rectangle{
-                    .x = content_rect.x + margin + label_width + gap,
-                    .y = content_rect.y + y_offset,
-                    .width = control_width,
-                    .height = item_height,
-                };
-                _ = rlg.slider(width_slider_rect, "10", "200", &self.object_width, 10.0, 200.0);
-                y_offset += item_height + spacing;
+            const width_slider_rect = rl.Rectangle{
+                .x = content_rect.x + margin + label_width + gap,
+                .y = content_rect.y + y_offset,
+                .width = control_width,
+                .height = item_height,
+            };
+            _ = rlg.slider(width_slider_rect, "10", "200", &self.object_width, 10.0, 200.0);
+            y_offset += item_height + spacing;
 
-                // Height
-                const height_label_rect = rl.Rectangle{
-                    .x = content_rect.x + margin,
-                    .y = content_rect.y + y_offset,
-                    .width = label_width,
-                    .height = item_height,
-                };
-                _ = rlg.label(height_label_rect, "Height:");
+            // Height
+            const height_label_rect = rl.Rectangle{
+                .x = content_rect.x + margin,
+                .y = content_rect.y + y_offset,
+                .width = label_width,
+                .height = item_height,
+            };
+            _ = rlg.label(height_label_rect, "Height:");
 
-                const height_slider_rect = rl.Rectangle{
-                    .x = content_rect.x + margin + label_width + gap,
-                    .y = content_rect.y + y_offset,
-                    .width = control_width,
-                    .height = item_height,
-                };
-                _ = rlg.slider(height_slider_rect, "10", "200", &self.object_height, 10.0, 200.0);
-                y_offset += item_height + spacing;
-            },
-            .circle => {
-                // Radius
-                const radius_label_rect = rl.Rectangle{
-                    .x = content_rect.x + margin,
-                    .y = content_rect.y + y_offset,
-                    .width = label_width,
-                    .height = item_height,
-                };
-                _ = rlg.label(radius_label_rect, "Radius:");
+            const height_slider_rect = rl.Rectangle{
+                .x = content_rect.x + margin + label_width + gap,
+                .y = content_rect.y + y_offset,
+                .width = control_width,
+                .height = item_height,
+            };
+            _ = rlg.slider(height_slider_rect, "10", "200", &self.object_height, 10.0, 200.0);
+            y_offset += item_height + spacing;
+        } else {
+            // Radius
+            const radius_label_rect = rl.Rectangle{
+                .x = content_rect.x + margin,
+                .y = content_rect.y + y_offset,
+                .width = label_width,
+                .height = item_height,
+            };
+            _ = rlg.label(radius_label_rect, "Radius:");
 
-                const radius_slider_rect = rl.Rectangle{
-                    .x = content_rect.x + margin + label_width + gap,
-                    .y = content_rect.y + y_offset,
-                    .width = control_width,
-                    .height = item_height,
-                };
-                _ = rlg.slider(radius_slider_rect, "5", "100", &self.object_radius, 5.0, 100.0);
-                y_offset += item_height + spacing;
-            },
+            const radius_slider_rect = rl.Rectangle{
+                .x = content_rect.x + margin + label_width + gap,
+                .y = content_rect.y + y_offset,
+                .width = control_width,
+                .height = item_height,
+            };
+            _ = rlg.slider(radius_slider_rect, "5", "100", &self.object_radius, 5.0, 100.0);
+            y_offset += item_height + spacing;
         }
 
         return y_offset;
@@ -192,7 +181,7 @@ pub const ObjectCreation = struct {
         const spacing: f32 = if (layout_info.is_compact) 2.0 else 5.0;
 
         // Physics Parameters (only for dynamic objects)
-        if (self.selected_body_type == .dynamic) {
+        if (self.selected_body_is_dynamic) {
             _ = rlg.line(rl.Rectangle{
                 .x = content_rect.x + margin,
                 .y = content_rect.y + y_offset,
@@ -330,23 +319,53 @@ pub const ObjectCreation = struct {
     }
 
     fn createObject(self: *Self, engine: *Engine) void {
-        _ = engine; // TODO: Implement object creation
+        // Create the physics shape
+        const shape = if (self.selected_shape_is_rectangle)
+            PhysicsShape{
+                .rectangle = rl.Rectangle{
+                    .x = 0, // Position is handled separately
+                    .y = 0,
+                    .width = self.object_width,
+                    .height = self.object_height,
+                },
+            }
+        else
+            PhysicsShape{ .circle = .{ .radius = self.object_radius } };
 
-        // For now, just print what would be created
-        const body_type_str = if (self.selected_body_type == .static) "static" else "dynamic";
-        const shape_type_str = if (self.selected_shape_type == .rectangle) "rectangle" else "circle";
+        // Create the body
+        const body = if (self.selected_body_is_dynamic)
+            Body.initDynamic(shape, self.spawn_position, .{
+                .mass = self.mass,
+                .restitution = self.restitution,
+                .friction = self.friction,
+            })
+        else
+            Body.initStatic(shape, self.spawn_position, .{
+                .restitution = self.restitution,
+                .friction = self.friction,
+            });
 
-        if (self.selected_shape_type == .rectangle) {
-            if (self.selected_body_type == .dynamic) {
-                std.log.info("Creating {s} {s}: {}x{} at ({d:.1}, {d:.1}), mass: {d:.2}, restitution: {d:.2}, friction: {d:.2}", .{ body_type_str, shape_type_str, self.object_width, self.object_height, self.spawn_position.x, self.spawn_position.y, self.mass, self.restitution, self.friction });
+        // Add to physics world
+        _ = engine.physics.addBody(body) catch |err| {
+            std.log.err("Failed to create object: {}", .{err});
+            return;
+        };
+
+        // Log the creation
+        const body_type_str = if (self.selected_body_is_dynamic) "dynamic" else "static";
+        const shape_type_str = if (self.selected_shape_is_rectangle) "rectangle" else "circle";
+
+        if (self.selected_shape_is_rectangle) {
+            if (self.selected_body_is_dynamic) {
+                std.log.info("Created {s} {s}: {}x{} at ({d:.1}, {d:.1}), mass: {d:.2}, restitution: {d:.2}, friction: {d:.2}", .{ body_type_str, shape_type_str, self.object_width, self.object_height, self.spawn_position.x, self.spawn_position.y, self.mass, self.restitution, self.friction });
             } else {
-                std.log.info("Creating {s} {s}: {}x{} at ({d:.1}, {d:.1})", .{ body_type_str, shape_type_str, self.object_width, self.object_height, self.spawn_position.x, self.spawn_position.y });
+                std.log.info("Created {s} {s}: {}x{} at ({d:.1}, {d:.1})", .{ body_type_str, shape_type_str, self.object_width, self.object_height, self.spawn_position.x, self.spawn_position.y });
             }
         } else {
-            if (self.selected_body_type == .dynamic) {
-                std.log.info("Creating {s} {s}: radius {d:.1} at ({d:.1}, {d:.1}), mass: {d:.2}, restitution: {d:.2}, friction: {d:.2}", .{ body_type_str, shape_type_str, self.object_radius, self.spawn_position.x, self.spawn_position.y, self.mass, self.restitution, self.friction });
+            if (self.selected_body_is_dynamic) {
+                std.log.info("Created {s} {s}: radius {d:.1} at ({d:.1}, {d:.1}), mass: {d:.2}, restitution: {d:.2}, friction: {d:.2}", .{ body_type_str, shape_type_str, self.object_radius, self.spawn_position.x, self.spawn_position.y, self.mass, self.restitution, self.friction });
             } else {
-                std.log.info("Creating {s} {s}: radius {d:.1} at ({d:.1}, {d:.1})", .{ body_type_str, shape_type_str, self.object_radius, self.spawn_position.x, self.spawn_position.y });
+                std.log.info("Created {s} {s}: radius {d:.1} at ({d:.1}, {d:.1})", .{ body_type_str, shape_type_str, self.object_radius, self.spawn_position.x, self.spawn_position.y });
             }
         }
     }
