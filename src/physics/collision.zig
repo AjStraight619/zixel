@@ -1,7 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const Body = @import("body.zig").Body;
-const PhysicsShape = @import("../core/math/shapes.zig").PhysicsShape;
+const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
 
 // Import the new modules
 const narrowphase = @import("narrowphase.zig");

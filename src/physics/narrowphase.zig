@@ -1,7 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const Body = @import("body.zig").Body;
-const PhysicsShape = @import("../core/math/shapes.zig").PhysicsShape;
+const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
 const Vector2 = rl.Vector2;
 
 /// Contact information for collision response

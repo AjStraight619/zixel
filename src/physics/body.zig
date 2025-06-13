@@ -1,9 +1,9 @@
 const std = @import("std");
 const rl = @import("raylib");
-const PhysicsShape = @import("../core/math/shapes.zig").PhysicsShape;
+const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
 const Vector2 = rl.Vector2;
 const Rectangle = rl.Rectangle;
-const AABB = @import("../core/math/aabb.zig").AABB;
+const AABB = @import("../math/aabb.zig").AABB;
 
 pub const StaticBodyOptions = struct {
     rotation: f32 = 0.0,

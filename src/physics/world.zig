@@ -277,9 +277,9 @@ pub const PhysicsWorld = struct {
 
 /// Test code for AABB collision detection
 const testing = @import("std").testing;
-const core_math = @import("../core/math/aabb.zig"); // For AABB
+const core_math = @import("../math/aabb.zig"); // For AABB
 const physics_body = @import("body.zig"); // For Body, StaticBodyOptions etc.
-const physics_shapes = @import("../core/math/shapes.zig"); // For PhysicsShape
+const physics_shapes = @import("../math/shapes.zig"); // For PhysicsShape
 
 // Helper to create a static body for tests
 fn createTestStaticBody(shape: physics_shapes.PhysicsShape, pos: rl.Vector2, rot_rad: f32) physics_body.Body {
