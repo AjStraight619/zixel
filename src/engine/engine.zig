@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const Allocator = std.mem.Allocator;
 const Window = @import("../graphics/window.zig").Window;
 const WindowConfig = @import("../graphics/window.zig").WindowConfig;
 const PhysicsConfig = @import("../physics/config.zig").PhysicsConfig;
@@ -24,7 +25,7 @@ pub const UpdateFn = *const fn (engine: *Engine, allocator: std.mem.Allocator, d
 pub const RenderFn = *const fn (engine: *Engine, allocator: std.mem.Allocator) anyerror!void;
 
 pub const Engine = struct {
-    alloc: std.mem.Allocator,
+    alloc: Allocator,
     window: Window,
     physics: PhysicsWorld,
     keybind_manager: keybinds.KeybindManager,
@@ -39,7 +40,7 @@ pub const Engine = struct {
 
     const Self = @This();
 
-    pub fn init(alloc: std.mem.Allocator, config: EngineConfig) !Self {
+    pub fn init(alloc: Allocator, config: EngineConfig) !Self {
         var kb_manager = keybinds.KeybindManager.init(alloc);
         if (config.load_default_keybinds) {
             try kb_manager.loadDefaultBindings();
