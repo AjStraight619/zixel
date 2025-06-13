@@ -1,7 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
-const Window = @import("../renderer/window.zig").Window;
-const WindowConfig = @import("../renderer/config.zig").WindowConfig;
+const Window = @import("../graphics/window.zig").Window;
+const WindowConfig = @import("../graphics/window.zig").WindowConfig;
 const PhysicsConfig = @import("../physics/config.zig").PhysicsConfig;
 const PhysicsWorld = @import("../physics/world.zig").PhysicsWorld;
 const Assets = @import("../assets/assets.zig").Assets;
@@ -9,7 +9,7 @@ const keybinds = @import("../input/keybinds.zig");
 const GUIManager = @import("../gui/gui_manager.zig").GUI;
 const InputManager = @import("../input/input_manager.zig").InputManager;
 
-const EngineConfig = struct {
+pub const EngineConfig = struct {
     window: WindowConfig = .{},
     physics: PhysicsConfig = .{},
     target_fps: u32 = 60,
