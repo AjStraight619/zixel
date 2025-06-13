@@ -18,7 +18,7 @@ Requires **Zig 0.14**.
 
 ```bash
 git clone <https://github.com/AjStraight619/zixel.git>
-cd Zig2dEngine
+cd zixel
 zig build
 ```
 
