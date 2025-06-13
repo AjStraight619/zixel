@@ -5,11 +5,19 @@ const rlg = @import("raygui");
 const Engine = @import("../engine/engine.zig").Engine;
 const DebugPanel = @import("debug_panel.zig").DebugPanel;
 const ObjectCreation = @import("object_creation.zig").ObjectCreation;
-const Window = @import("../renderer/window.zig").Window;
+const Window = @import("../graphics/window.zig").Window;
 
 pub const Tab = enum(i32) {
     debug_panel = 0,
     object_creation = 1,
+};
+
+pub const LayoutInfo = struct {
+    is_compact: bool,
+    is_narrow: bool,
+    is_short: bool,
+    available_width: f32,
+    available_height: f32,
 };
 
 pub const GUI = struct {
@@ -55,12 +63,12 @@ pub const GUI = struct {
         const screen_width = @as(f32, @floatFromInt(window_size.windowWidth));
         const screen_height = @as(f32, @floatFromInt(window_size.windowHeight));
 
-        // Calculate optimal width (prefer 25% of screen width, but respect min/max)
-        var optimal_width = screen_width * 0.25;
+        // Calculate optimal width (prefer 30% of screen width, but respect min/max)
+        var optimal_width = screen_width * 0.3;
 
         // For very small screens, use a larger percentage
         if (screen_width < 800) {
-            optimal_width = screen_width * 0.4;
+            optimal_width = screen_width * 0.5;
         }
 
         // Apply constraints
@@ -69,19 +77,18 @@ pub const GUI = struct {
         // Calculate optimal height based on aspect ratio and screen size
         var optimal_height: f32 = undefined;
 
+        // TODO: Make this more dynamic based on the screen size
+
         if (screen_height < 600) {
             // For small heights, use more of the screen
-            optimal_height = screen_height * 0.8;
-        } else if (screen_height < 800) {
-            optimal_height = screen_height * 0.6;
+            optimal_height = screen_height;
         } else {
-            optimal_height = screen_height * 0.5;
+            optimal_height = screen_height;
         }
 
         // Apply height constraints
         const panel_height = std.math.clamp(optimal_height, MIN_HEIGHT, @min(MAX_HEIGHT, screen_height - 2 * MARGIN));
 
-        // Position the panel (LEFT side of screen, like it was before)
         self.main_rect = rl.Rectangle{
             .x = MARGIN,
             .y = MARGIN,
@@ -158,12 +165,4 @@ pub const GUI = struct {
             .available_height = self.main_rect.height - 90, // Account for title and tabs
         };
     }
-};
-
-pub const LayoutInfo = struct {
-    is_compact: bool,
-    is_narrow: bool,
-    is_short: bool,
-    available_width: f32,
-    available_height: f32,
 };

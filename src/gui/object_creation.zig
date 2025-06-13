@@ -41,7 +41,7 @@ pub const ObjectCreation = struct {
     }
 
     pub fn render(self: *Self, engine: *Engine, content_rect: rl.Rectangle) void {
-        // For now, create a mock layout info - in a real implementation you'd pass this from GUI manager
+        // Create layout info
         const layout_info = LayoutInfo{
             .is_compact = content_rect.width < 350 or content_rect.height < 500,
             .is_narrow = content_rect.width < 350,
@@ -50,34 +50,29 @@ pub const ObjectCreation = struct {
             .available_height = content_rect.height,
         };
 
-        if (layout_info.is_compact) {
-            self.renderCompactLayout(engine, content_rect, layout_info);
-        } else {
-            self.renderNormalLayout(engine, content_rect, layout_info);
-        }
-    }
-
-    fn renderNormalLayout(self: *Self, engine: *Engine, content_rect: rl.Rectangle, layout_info: LayoutInfo) void {
         var y_offset: f32 = 5;
         const item_height: f32 = 25;
         const margin: f32 = 10;
-        const label_width: f32 = 100;
-        const control_width: f32 = layout_info.available_width - label_width - 3 * margin;
+        const label_width: f32 = 80; // Reduced from 100
+        const gap: f32 = 5; // Smaller gap between label and slider
+        const value_text_space: f32 = 40; // Space for value text on right
+        const control_width: f32 = layout_info.available_width - label_width - gap - margin - value_text_space;
 
-        // Body Type Selection (Static vs Dynamic)
-        const body_type_label_rect = rl.Rectangle{
+        // Body Type in first row
+        _ = rlg.label(rl.Rectangle{
             .x = content_rect.x + margin,
             .y = content_rect.y + y_offset,
             .width = layout_info.available_width - 2 * margin,
             .height = item_height,
-        };
-        _ = rlg.label(body_type_label_rect, "Body Type:");
+        }, "Body Type:");
         y_offset += item_height + 2;
 
+        // Body Type toggles - constrain width properly
+        const toggle_width = layout_info.available_width - 2 * margin;
         const body_type_toggle_rect = rl.Rectangle{
             .x = content_rect.x + margin,
             .y = content_rect.y + y_offset,
-            .width = (layout_info.available_width - 3 * margin) / 2,
+            .width = toggle_width / 2,
             .height = item_height,
         };
 
@@ -88,20 +83,20 @@ pub const ObjectCreation = struct {
         }
         y_offset += item_height + 8;
 
-        // Shape Type Selection (Circle vs Rectangle)
-        const shape_type_label_rect = rl.Rectangle{
+        // Shape Type in second row
+        _ = rlg.label(rl.Rectangle{
             .x = content_rect.x + margin,
             .y = content_rect.y + y_offset,
-            .width = layout_info.available_width - 2 * margin,
+            .width = toggle_width,
             .height = item_height,
-        };
-        _ = rlg.label(shape_type_label_rect, "Shape Type:");
+        }, "Shape Type:");
         y_offset += item_height + 2;
 
+        // Shape Type toggles - constrain width properly
         const shape_type_toggle_rect = rl.Rectangle{
             .x = content_rect.x + margin,
             .y = content_rect.y + y_offset,
-            .width = (layout_info.available_width - 3 * margin) / 2,
+            .width = toggle_width / 2,
             .height = item_height,
         };
 
@@ -112,113 +107,13 @@ pub const ObjectCreation = struct {
         }
         y_offset += item_height + 8;
 
-        y_offset = self.renderShapeParameters(content_rect, y_offset, layout_info, item_height, margin, label_width, control_width);
-        y_offset = self.renderPhysicsParameters(content_rect, y_offset, layout_info, item_height, margin, label_width, control_width);
-        y_offset = self.renderSpawnPosition(content_rect, y_offset, layout_info, item_height, margin, label_width, control_width);
+        y_offset = self.renderShapeParameters(content_rect, y_offset, layout_info, item_height, margin, label_width, control_width, gap);
+        y_offset = self.renderPhysicsParameters(content_rect, y_offset, layout_info, item_height, margin, label_width, control_width, gap);
+        y_offset = self.renderSpawnPosition(content_rect, y_offset, layout_info, item_height, margin, label_width, control_width, gap);
         self.renderCreateButton(engine, content_rect, y_offset, layout_info, item_height, margin);
     }
 
-    fn renderCompactLayout(self: *Self, engine: *Engine, content_rect: rl.Rectangle, layout_info: LayoutInfo) void {
-        // For compact layout, use smaller spacing and potentially two columns
-        var y_offset: f32 = 3;
-        const item_height: f32 = 22;
-        const margin: f32 = 6;
-        const small_spacing: f32 = 3;
-
-        // Body Type and Shape Type in one row if wide enough
-        if (!layout_info.is_narrow) {
-            // Two column layout for selections
-            const col_width = (layout_info.available_width - 3 * margin) / 2;
-
-            // Body Type (left column)
-            _ = rlg.label(rl.Rectangle{
-                .x = content_rect.x + margin,
-                .y = content_rect.y + y_offset,
-                .width = col_width,
-                .height = item_height,
-            }, "Body:");
-
-            var active_body_type: i32 = @intFromEnum(self.selected_body_type);
-            const body_toggle_rect = rl.Rectangle{
-                .x = content_rect.x + margin,
-                .y = content_rect.y + y_offset + item_height + 1,
-                .width = col_width,
-                .height = item_height,
-            };
-            _ = rlg.toggleGroup(body_toggle_rect, "Static;Dynamic", &active_body_type);
-            self.selected_body_type = @enumFromInt(active_body_type);
-
-            // Shape Type (right column)
-            _ = rlg.label(rl.Rectangle{
-                .x = content_rect.x + margin + col_width + margin,
-                .y = content_rect.y + y_offset,
-                .width = col_width,
-                .height = item_height,
-            }, "Shape:");
-
-            var active_shape_type: i32 = @intFromEnum(self.selected_shape_type);
-            const shape_toggle_rect = rl.Rectangle{
-                .x = content_rect.x + margin + col_width + margin,
-                .y = content_rect.y + y_offset + item_height + 1,
-                .width = col_width,
-                .height = item_height,
-            };
-            _ = rlg.toggleGroup(shape_toggle_rect, "Rect;Circle", &active_shape_type);
-            self.selected_shape_type = @enumFromInt(active_shape_type);
-
-            y_offset += 2 * item_height + 6;
-        } else {
-            // Narrow layout - stack vertically but compact
-            _ = rlg.label(rl.Rectangle{
-                .x = content_rect.x + margin,
-                .y = content_rect.y + y_offset,
-                .width = layout_info.available_width - 2 * margin,
-                .height = item_height,
-            }, "Body Type:");
-            y_offset += item_height + 1;
-
-            var active_body_type: i32 = @intFromEnum(self.selected_body_type);
-            const body_toggle_rect = rl.Rectangle{
-                .x = content_rect.x + margin,
-                .y = content_rect.y + y_offset,
-                .width = layout_info.available_width - 2 * margin,
-                .height = item_height,
-            };
-            _ = rlg.toggleGroup(body_toggle_rect, "Static;Dynamic", &active_body_type);
-            self.selected_body_type = @enumFromInt(active_body_type);
-            y_offset += item_height + small_spacing;
-
-            _ = rlg.label(rl.Rectangle{
-                .x = content_rect.x + margin,
-                .y = content_rect.y + y_offset,
-                .width = layout_info.available_width - 2 * margin,
-                .height = item_height,
-            }, "Shape:");
-            y_offset += item_height + 1;
-
-            var active_shape_type: i32 = @intFromEnum(self.selected_shape_type);
-            const shape_toggle_rect = rl.Rectangle{
-                .x = content_rect.x + margin,
-                .y = content_rect.y + y_offset,
-                .width = layout_info.available_width - 2 * margin,
-                .height = item_height,
-            };
-            _ = rlg.toggleGroup(shape_toggle_rect, "Rect;Circle", &active_shape_type);
-            self.selected_shape_type = @enumFromInt(active_shape_type);
-            y_offset += item_height + small_spacing;
-        }
-
-        // Compact parameter rendering
-        const label_width: f32 = 70;
-        const control_width: f32 = layout_info.available_width - label_width - 3 * margin;
-
-        y_offset = self.renderShapeParameters(content_rect, y_offset, layout_info, item_height, margin, label_width, control_width);
-        y_offset = self.renderPhysicsParameters(content_rect, y_offset, layout_info, item_height, margin, label_width, control_width);
-        y_offset = self.renderSpawnPosition(content_rect, y_offset, layout_info, item_height, margin, label_width, control_width);
-        self.renderCreateButton(engine, content_rect, y_offset, layout_info, item_height, margin);
-    }
-
-    fn renderShapeParameters(self: *Self, content_rect: rl.Rectangle, y_start: f32, layout_info: LayoutInfo, item_height: f32, margin: f32, label_width: f32, control_width: f32) f32 {
+    fn renderShapeParameters(self: *Self, content_rect: rl.Rectangle, y_start: f32, layout_info: LayoutInfo, item_height: f32, margin: f32, label_width: f32, control_width: f32, gap: f32) f32 {
         var y_offset = y_start;
         const spacing: f32 = if (layout_info.is_compact) 2.0 else 5.0;
 
@@ -242,7 +137,7 @@ pub const ObjectCreation = struct {
                 _ = rlg.label(width_label_rect, "Width:");
 
                 const width_slider_rect = rl.Rectangle{
-                    .x = content_rect.x + label_width + 2 * margin,
+                    .x = content_rect.x + margin + label_width + gap,
                     .y = content_rect.y + y_offset,
                     .width = control_width,
                     .height = item_height,
@@ -260,7 +155,7 @@ pub const ObjectCreation = struct {
                 _ = rlg.label(height_label_rect, "Height:");
 
                 const height_slider_rect = rl.Rectangle{
-                    .x = content_rect.x + label_width + 2 * margin,
+                    .x = content_rect.x + margin + label_width + gap,
                     .y = content_rect.y + y_offset,
                     .width = control_width,
                     .height = item_height,
@@ -279,7 +174,7 @@ pub const ObjectCreation = struct {
                 _ = rlg.label(radius_label_rect, "Radius:");
 
                 const radius_slider_rect = rl.Rectangle{
-                    .x = content_rect.x + label_width + 2 * margin,
+                    .x = content_rect.x + margin + label_width + gap,
                     .y = content_rect.y + y_offset,
                     .width = control_width,
                     .height = item_height,
@@ -292,7 +187,7 @@ pub const ObjectCreation = struct {
         return y_offset;
     }
 
-    fn renderPhysicsParameters(self: *Self, content_rect: rl.Rectangle, y_start: f32, layout_info: LayoutInfo, item_height: f32, margin: f32, label_width: f32, control_width: f32) f32 {
+    fn renderPhysicsParameters(self: *Self, content_rect: rl.Rectangle, y_start: f32, layout_info: LayoutInfo, item_height: f32, margin: f32, label_width: f32, control_width: f32, gap: f32) f32 {
         var y_offset = y_start;
         const spacing: f32 = if (layout_info.is_compact) 2.0 else 5.0;
 
@@ -316,7 +211,7 @@ pub const ObjectCreation = struct {
             _ = rlg.label(mass_label_rect, "Mass:");
 
             const mass_slider_rect = rl.Rectangle{
-                .x = content_rect.x + label_width + 2 * margin,
+                .x = content_rect.x + margin + label_width + gap,
                 .y = content_rect.y + y_offset,
                 .width = control_width,
                 .height = item_height,
@@ -334,7 +229,7 @@ pub const ObjectCreation = struct {
             _ = rlg.label(restitution_label_rect, if (layout_info.is_compact) "Bounce:" else "Bounciness:");
 
             const restitution_slider_rect = rl.Rectangle{
-                .x = content_rect.x + label_width + 2 * margin,
+                .x = content_rect.x + margin + label_width + gap,
                 .y = content_rect.y + y_offset,
                 .width = control_width,
                 .height = item_height,
@@ -352,7 +247,7 @@ pub const ObjectCreation = struct {
             _ = rlg.label(friction_label_rect, "Friction:");
 
             const friction_slider_rect = rl.Rectangle{
-                .x = content_rect.x + label_width + 2 * margin,
+                .x = content_rect.x + margin + label_width + gap,
                 .y = content_rect.y + y_offset,
                 .width = control_width,
                 .height = item_height,
@@ -364,7 +259,7 @@ pub const ObjectCreation = struct {
         return y_offset;
     }
 
-    fn renderSpawnPosition(self: *Self, content_rect: rl.Rectangle, y_start: f32, layout_info: LayoutInfo, item_height: f32, margin: f32, label_width: f32, control_width: f32) f32 {
+    fn renderSpawnPosition(self: *Self, content_rect: rl.Rectangle, y_start: f32, layout_info: LayoutInfo, item_height: f32, margin: f32, label_width: f32, control_width: f32, gap: f32) f32 {
         var y_offset = y_start;
         const spacing: f32 = if (layout_info.is_compact) 2.0 else 5.0;
 
@@ -387,7 +282,7 @@ pub const ObjectCreation = struct {
         _ = rlg.label(x_label_rect, "X Position:");
 
         const x_slider_rect = rl.Rectangle{
-            .x = content_rect.x + label_width + 2 * margin,
+            .x = content_rect.x + margin + label_width + gap,
             .y = content_rect.y + y_offset,
             .width = control_width,
             .height = item_height,
@@ -405,7 +300,7 @@ pub const ObjectCreation = struct {
         _ = rlg.label(y_label_rect, "Y Position:");
 
         const y_slider_rect = rl.Rectangle{
-            .x = content_rect.x + label_width + 2 * margin,
+            .x = content_rect.x + margin + label_width + gap,
             .y = content_rect.y + y_offset,
             .width = control_width,
             .height = item_height,
