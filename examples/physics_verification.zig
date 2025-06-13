@@ -3,7 +3,7 @@ const rl = @import("raylib");
 const zixel = @import("zixel");
 const Engine = zixel.Engine;
 const Body = zixel.Body;
-const utils = @import("../src/core/math/utils.zig");
+const utils = @import("../src/math/utils.zig");
 
 // PHYSICS VERIFICATION TEST TYPES AND RUNNER
 
