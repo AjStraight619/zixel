@@ -1,85 +1,90 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const rl = @import("raylib");
+const Key = @import("keys.zig").Key;
 
-// Define all possible game actions
-pub const GameAction = enum {
-    MoveUp,
-    MoveDown,
-    MoveLeft,
-    MoveRight,
-    Jump,
-    Attack,
-    Interact,
-    OpenMenu,
-};
-
-pub const KeybindManager = struct {
-    alloc: Allocator,
-    // Using a HashMap to store action -> key mappings.
-    bindings: std.AutoHashMap(GameAction, rl.KeyboardKey),
-
-    const Self = @This();
-
-    pub fn init(alloc: Allocator) Self {
-        return Self{
-            .alloc = alloc,
-            .bindings = std.AutoHashMap(GameAction, rl.KeyboardKey).init(alloc),
-        };
+/// Generic keybind manager that works with any user-defined enum
+pub fn KeybindManager(comptime ActionType: type) type {
+    // Ensure ActionType is an enum
+    const type_info = @typeInfo(ActionType);
+    if (type_info != .@"enum") {
+        @compileError("ActionType must be an enum");
     }
 
-    pub fn deinit(self: *Self) void {
-        self.bindings.deinit();
-    }
+    return struct {
+        alloc: Allocator,
+        bindings: std.AutoHashMap(ActionType, Key),
 
-    // Register a key for a specific action
-    pub fn addBinding(self: *Self, action: GameAction, key: rl.KeyboardKey) !void {
-        try self.bindings.put(action, key);
-    }
+        const Self = @This();
 
-    // Default bindings
-    pub fn loadDefaultBindings(self: *Self) !void {
-        try self.addBinding(.MoveUp, .up);
-        try self.addBinding(.MoveDown, .down);
-        try self.addBinding(.MoveLeft, .left);
-        try self.addBinding(.MoveRight, .right);
-        try self.addBinding(.Jump, .space);
-        try self.addBinding(.Attack, .j);
-        try self.addBinding(.Interact, .e);
-        try self.addBinding(.OpenMenu, .escape);
-    }
+        pub fn init(alloc: Allocator) Self {
+            return Self{
+                .alloc = alloc,
+                .bindings = std.AutoHashMap(ActionType, Key).init(alloc),
+            };
+        }
 
-    // Check if an action's key is currently held down
-    pub fn isActionPressed(self: *Self, action: GameAction) bool {
-        if (self.bindings.get(action)) |key| {
-            return rl.isKeyDown(key);
-        } else {
-            std.log.warn("No binding found for action: {any}", .{action});
+        pub fn deinit(self: *Self) void {
+            self.bindings.deinit();
+        }
+
+        /// Bind an action to a key
+        pub fn bind(self: *Self, action: ActionType, key: Key) !void {
+            try self.bindings.put(action, key);
+        }
+
+        /// Bind multiple actions at once using a struct literal
+        pub fn bindMany(self: *Self, bindings: anytype) !void {
+            const fields = std.meta.fields(@TypeOf(bindings));
+            inline for (fields) |field| {
+                const action = @field(ActionType, field.name);
+                const key = @field(bindings, field.name);
+                try self.bind(action, key);
+            }
+        }
+
+        /// Check if an action's key is currently held down
+        pub fn isActionHeld(self: *Self, action: ActionType) bool {
+            if (self.bindings.get(action)) |key| {
+                return rl.isKeyDown(key.toRaylib());
+            }
             return false;
         }
-    }
 
-    // Check if an action's key was just pressed in this frame
-    pub fn isActionJustPressed(self: *Self, action: GameAction) bool {
-        if (self.bindings.get(action)) |key| {
-            return rl.isKeyPressed(key);
-        } else {
-            // It's good to log if a binding is missing, but you might not want to spam logs every frame.
-            // Consider logging this only once or during a debug mode.
-            // std.log.debug("No binding found for action (just pressed): {any}", .{action});
+        /// Check if an action's key was just pressed this frame
+        pub fn isActionTapped(self: *Self, action: ActionType) bool {
+            if (self.bindings.get(action)) |key| {
+                return rl.isKeyPressed(key.toRaylib());
+            }
             return false;
         }
-    }
 
-    // Check if an action's key was just released in this frame
-    pub fn isActionReleased(self: *Self, action: GameAction) bool {
-        if (self.bindings.get(action)) |key| {
-            return rl.isKeyReleased(key);
-        } else {
-            // std.log.debug("No binding found for action (released): {any}", .{action});
+        /// Check if an action's key was just released this frame
+        pub fn isActionReleased(self: *Self, action: ActionType) bool {
+            if (self.bindings.get(action)) |key| {
+                return rl.isKeyReleased(key.toRaylib());
+            }
             return false;
         }
-    }
 
-    // TODO: Add functionality for rebinding keys at runtime (e.g., load/save from config file).
-};
+        /// Get the key bound to an action (returns null if not bound)
+        pub fn getKey(self: *Self, action: ActionType) ?Key {
+            return self.bindings.get(action);
+        }
+
+        /// Remove a binding
+        pub fn unbind(self: *Self, action: ActionType) void {
+            _ = self.bindings.remove(action);
+        }
+
+        /// Check if an action is bound to any key
+        pub fn isBound(self: *Self, action: ActionType) bool {
+            return self.bindings.contains(action);
+        }
+    };
+}
+
+/// Helper function to create a keybind manager for any enum type
+pub fn createKeybindManager(comptime ActionType: type, alloc: Allocator) KeybindManager(ActionType) {
+    return KeybindManager(ActionType).init(alloc);
+}
