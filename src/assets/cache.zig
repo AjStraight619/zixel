@@ -4,6 +4,7 @@ const rl = @import("raylib");
 const CacheStats = @import("cache_stats.zig").CacheStats;
 const CacheEntry = @import("cache_entry.zig").CacheEntry;
 const Asset = @import("cache_entry.zig").Asset;
+const log = @import("../core/logging.zig").assets;
 
 pub const AssetCache = struct {
     alloc: Allocator,
@@ -38,54 +39,52 @@ pub const AssetCache = struct {
         self.entries.deinit();
 
         if (self.enable_stats) {
-            std.log.info("Final cache stats:");
-            self.stats.print();
+            log.info("Final cache stats: {}", .{self.stats});
         }
     }
 
-    // Get cached asset with stats tracking
-    fn getCachedAsset(self: *Self, full_path: []const u8, comptime asset_type: Asset) !asset_type {
-        const result = try self.entries.getOrPut(full_path);
-
-        if (result.found_existing) {
-            // Cache hit
-            if (self.enable_stats) self.stats.hits += 1;
-            result.value_ptr.touch();
-
-            // Type safety check
-            return switch (result.value_ptr.asset) {
-                asset_type => |asset| asset,
-                else => error.AssetTypeMismatch,
-            };
-        }
-
-        // Cache miss - load new asset
-        if (self.enable_stats) self.stats.misses += 1;
-
-        const loaded_asset = self.loadAssetFromDisk(full_path, asset_type);
-        const entry = CacheEntry{
-            .asset = loaded_asset,
-            .size_bytes = CacheEntry.estimateSize(loaded_asset),
-            .last_accessed = std.time.timestamp(),
-        };
-
-        // Check memory limits before adding
-        if (self.stats.total_memory_bytes + entry.size_bytes > self.max_memory_bytes) {
-            try self.evictOldAssets(entry.size_bytes);
-        }
-
-        result.value_ptr.* = entry;
-        self.stats.total_memory_bytes += entry.size_bytes;
-
-        return switch (loaded_asset) {
-            asset_type => |asset| asset,
-            else => unreachable,
+    // Simplified texture loading for now
+    fn loadTextureFromDisk(self: *Self, full_path: [:0]const u8) !rl.Texture {
+        _ = self;
+        return rl.loadTexture(full_path) catch |err| {
+            log.err("Failed to load texture: {s}", .{full_path});
+            return err;
         };
     }
 
     // Type-specific public methods
-    pub fn getTexture(self: *Self, full_path: []const u8) !rl.Texture {
-        return self.getCachedAsset(full_path, Asset.Texture);
+    pub fn getTexture(self: *Self, full_path: [:0]const u8) !rl.Texture {
+        // Make a copy of the path for the hash map key
+        const path_copy = try self.alloc.dupe(u8, full_path);
+
+        const result = try self.entries.getOrPut(path_copy);
+
+        if (result.found_existing) {
+            // Cache hit - free the path copy since we didn't need it
+            self.alloc.free(path_copy);
+            if (self.enable_stats) self.stats.hits += 1;
+            result.value_ptr.touch();
+
+            return switch (result.value_ptr.asset) {
+                .Texture => |tex| tex,
+                else => error.AssetTypeMismatch,
+            };
+        }
+
+        // Cache miss - load new texture (keep path_copy as the key)
+        if (self.enable_stats) self.stats.misses += 1;
+
+        const texture = try self.loadTextureFromDisk(full_path);
+        const entry = CacheEntry{
+            .asset = Asset{ .Texture = texture },
+            .size_bytes = CacheEntry.estimateSize(Asset{ .Texture = texture }),
+            .last_accessed = std.time.timestamp(),
+        };
+
+        result.value_ptr.* = entry;
+        self.stats.total_memory_bytes += entry.size_bytes;
+
+        return texture;
     }
 
     pub fn getSound(self: *Self, full_path: []const u8) !rl.Sound {
@@ -102,7 +101,7 @@ pub const AssetCache = struct {
 
     // Helper functions
     fn loadAssetFromDisk(self: *Self, full_path: []const u8, comptime asset_type: Asset) Asset {
-        _ = self; // unused
+        _ = self;
         return switch (asset_type) {
             Asset.Texture => Asset{ .Texture = rl.loadTexture(full_path) },
             Asset.Sound => Asset{ .Sound = rl.loadSound(full_path) },
@@ -112,7 +111,7 @@ pub const AssetCache = struct {
     }
 
     fn unloadAsset(self: *Self, asset: Asset) void {
-        _ = self; // unused
+        _ = self;
         switch (asset) {
             .Texture => |tex| rl.unloadTexture(tex),
             .Sound => |sound| rl.unloadSound(sound),

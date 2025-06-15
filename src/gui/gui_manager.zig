@@ -59,7 +59,7 @@ pub const GUI = struct {
 
     /// Calculate responsive dimensions based on current window size
     fn updateResponsiveDimensions(self: *Self) void {
-        const window_size = self.window.getWindowSize();
+        const window_size = self.window.getSize();
         const screen_width = @as(f32, @floatFromInt(window_size.windowWidth));
         const screen_height = @as(f32, @floatFromInt(window_size.windowHeight));
 

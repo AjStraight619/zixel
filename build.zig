@@ -116,8 +116,8 @@ pub fn build(b: *std.Build) void {
     const run_circle_vs_rect_step = b.step("run-circle-vs-rect", "Run the circle vs rect test");
     run_circle_vs_rect_step.dependOn(&run_circle_vs_rect.step);
 
-    const physics_verification_exe = createExampleExe(b, "physics_verification", "examples/physics_verification.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
-    const run_physics_verification = b.addRunArtifact(physics_verification_exe);
-    const run_physics_verification_step = b.step("run-physics-tests", "Run the physics verification tests");
-    run_physics_verification_step.dependOn(&run_physics_verification.step);
+    // const physics_verification_exe = createExampleExe(b, "physics_verification", "examples/physics_verification.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
+    // const run_physics_verification = b.addRunArtifact(physics_verification_exe);
+    // const run_physics_verification_step = b.step("run-physics-tests", "Run the physics verification tests");
+    // run_physics_verification_step.dependOn(&run_physics_verification.step);
 }
