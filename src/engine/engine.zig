@@ -17,19 +17,18 @@ pub const EngineConfig = struct {
     physics: PhysicsConfig = .{},
     target_fps: u32 = 60,
     load_default_keybinds: bool = true,
-    assets_base_path: []const u8 = "assets/",
+    assets_base_path: [:0]const u8 = "assets/",
 };
 
-pub const HandleInputFn = *const fn (engine: *Engine, allocator: std.mem.Allocator) anyerror!void;
-pub const UpdateFn = *const fn (engine: *Engine, allocator: std.mem.Allocator, dt: f32) anyerror!void;
-pub const RenderFn = *const fn (engine: *Engine, allocator: std.mem.Allocator) anyerror!void;
+pub const HandleInputFn = *const fn (engine: *Engine, alloc: Allocator) anyerror!void;
+pub const UpdateFn = *const fn (engine: *Engine, alloc: Allocator, dt: f32) anyerror!void;
+pub const RenderFn = *const fn (engine: *Engine, alloc: Allocator) anyerror!void;
 
 pub const Engine = struct {
     alloc: Allocator,
     window: Window,
     physics: PhysicsWorld,
-    keybind_manager: keybinds.KeybindManager,
-    input_manager: InputManager,
+    input_manager_ptr: ?*anyopaque = null,
     target_fps: u32,
     assets: Assets,
     gui: GUIManager,
@@ -40,26 +39,19 @@ pub const Engine = struct {
 
     const Self = @This();
 
-    pub fn init(alloc: Allocator, config: EngineConfig) !Self {
-        var kb_manager = keybinds.KeybindManager.init(alloc);
-        if (config.load_default_keybinds) {
-            try kb_manager.loadDefaultBindings();
-        }
-
-        var input_manager = InputManager.init(alloc, &kb_manager);
-        try input_manager.loadDefaultGuiBindings();
+    pub fn init(alloc: Allocator, config: EngineConfig) Self {
         const window = Window.init(config.window);
         const assets = Assets.init(alloc, config.assets_base_path);
         const gui = GUIManager.init(alloc, &window);
         const physics = PhysicsWorld.init(alloc, config.physics);
 
         rl.setTargetFPS(@intCast(config.target_fps));
+
         return Self{
             .alloc = alloc,
             .window = window,
             .physics = physics,
-            .keybind_manager = kb_manager,
-            .input_manager = input_manager,
+            .input_manager_ptr = null,
             .target_fps = config.target_fps,
             .assets = assets,
             .gui = gui,
@@ -72,8 +64,6 @@ pub const Engine = struct {
     pub fn deinit(self: *Self) void {
         self.window.deinit();
         self.physics.deinit();
-        self.keybind_manager.deinit();
-        self.input_manager.deinit();
         self.gui.deinit();
     }
 
@@ -105,8 +95,14 @@ pub const Engine = struct {
         const physics_dt = self.physics.getPhysicsTimeStep();
 
         while (!rl.windowShouldClose()) {
-            // Unified input handling with priority system
-            _ = try self.input_manager.handleInput(&self.gui, self.handle_input, self);
+            // Input handling - skip if no input manager is set
+            if (self.input_manager_ptr != null) {
+                // Note: We can't call handleInput here because we don't know the concrete type
+                // Users will need to handle input in their handle_input callback
+                if (self.handle_input) |input_fn_ptr| {
+                    try input_fn_ptr(self, self.alloc);
+                }
+            }
 
             const frame_time = rl.getFrameTime();
             accumulator += frame_time;
@@ -133,24 +129,6 @@ pub const Engine = struct {
         }
     }
 
-    // Input Manager methods
-    pub fn getInputManager(self: *Self) *InputManager {
-        return &self.input_manager;
-    }
-
-    pub fn setGuiKeybind(self: *Self, action: GuiAction, key: rl.KeyboardKey) !void {
-        try self.input_manager.setGuiKeybind(action, key);
-    }
-
-    pub fn getKeybindManager(self: *Self) *keybinds.KeybindManager {
-        return &self.keybind_manager;
-    }
-
-    // Physics configuration methods
-    pub fn getPhysicsWorld(self: *Self) *PhysicsWorld {
-        return &self.physics;
-    }
-
     pub fn setGravity(self: *Self, gravity: rl.Vector2) void {
         self.physics.config.gravity = gravity;
         self.physics.gravity = gravity;
@@ -164,6 +142,14 @@ pub const Engine = struct {
         self.physics.config.debug_draw_aabb = aabb;
         self.physics.config.debug_draw_contacts = contacts;
         self.physics.config.debug_draw_joints = joints;
+    }
+
+    pub fn setInputManager(self: *Self, manager: anytype) void {
+        self.input_manager_ptr = manager;
+    }
+
+    pub fn getInputManager(self: *Self, comptime T: type) *T {
+        return @ptrCast(@alignCast(self.input_manager_ptr.?));
     }
 
     /// Render physics debug information (AABBs, contacts, joints)
