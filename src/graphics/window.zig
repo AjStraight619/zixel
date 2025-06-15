@@ -33,7 +33,7 @@ pub const Window = struct {
         rl.closeWindow();
     }
 
-    pub fn getWindowSize(self: *const Self) struct { windowWidth: i32, windowHeight: i32 } {
+    pub fn getSize(self: *const Self) struct { windowWidth: i32, windowHeight: i32 } {
         return .{ .windowWidth = self.width, .windowHeight = self.height };
     }
 };
