@@ -20,6 +20,7 @@ pub const Engine = engine.Engine;
 pub const EngineConfig = engine.EngineConfig;
 pub const WindowConfig = @import("graphics/window.zig").WindowConfig;
 pub const PhysicsWorld = physics.PhysicsWorld;
+pub const PhysicsConfig = @import("physics/world.zig").PhysicsConfig;
 pub const GUI = gui.GUI;
 
 // Physics types
