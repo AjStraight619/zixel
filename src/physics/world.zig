@@ -457,7 +457,7 @@ test "Sleep System Tests" {
     config.gravity = rl.Vector2{ .x = 0.0, .y = 0.0 }; // Disable gravity for sleep test
     config.debug_draw_contacts = false; // Disable debug output
 
-    var world = try PhysicsWorld.init(allocator, config);
+    var world = PhysicsWorld.init(allocator, config);
     defer world.deinit();
 
     // Add a dynamic body starting at rest
@@ -505,7 +505,7 @@ test "Collision Response Tests" {
     const allocator = gpa.allocator();
 
     const config = PhysicsConfig{};
-    var world = try PhysicsWorld.init(allocator, config);
+    var world = PhysicsWorld.init(allocator, config);
     defer world.deinit();
 
     // Create two dynamic bodies that will collide
@@ -570,7 +570,7 @@ test "Performance and Wake-up Tests" {
     config.sleep_time_threshold = 0.1; // Sleep quickly for test
     config.gravity = rl.Vector2{ .x = 0.0, .y = 0.0 }; // Disable gravity so bodies can sleep
 
-    var world = try PhysicsWorld.init(allocator, config);
+    var world = PhysicsWorld.init(allocator, config);
     defer world.deinit();
 
     // Add multiple stationary bodies that should go to sleep

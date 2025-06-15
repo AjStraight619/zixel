@@ -257,7 +257,7 @@ fn computeAabb(shape: PhysicsShape, position: Vector2, rotation: f32) AABB {
     }
 }
 
-fn drawShape(shape: PhysicsShape, position: Vector2, rotation_degrees: f32, color: rl.Color) void {
+fn drawShape(shape: PhysicsShape, position: Vector2, rotation_radians: f32, color: rl.Color) void {
     switch (shape) {
         .rectangle => |rect_shape| {
             const dest_rect = rl.Rectangle{
@@ -267,6 +267,8 @@ fn drawShape(shape: PhysicsShape, position: Vector2, rotation_degrees: f32, colo
                 .height = rect_shape.height,
             };
             const origin = Vector2{ .x = rect_shape.width / 2.0, .y = rect_shape.height / 2.0 };
+            // Convert radians to degrees for raylib's drawRectanglePro
+            const rotation_degrees = std.math.radiansToDegrees(rotation_radians);
             rl.drawRectanglePro(dest_rect, origin, rotation_degrees, color);
         },
         .circle => |circle_shape| {
