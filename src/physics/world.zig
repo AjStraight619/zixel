@@ -1,6 +1,5 @@
 const std = @import("std");
 const rl = @import("raylib"); // Import raylib
-const PhysicsConfig = @import("config.zig").PhysicsConfig;
 const Allocator = std.mem.Allocator;
 const Body = @import("body.zig").Body;
 const Vector2 = rl.Vector2; // Use Raylib's Vector2
@@ -14,6 +13,40 @@ const CollisionResponse = @import("response.zig").CollisionResponse;
 const Engine = @import("../engine/engine.zig").Engine;
 
 const logging = @import("../core/logging.zig");
+
+pub const PhysicsConfig = struct {
+    // World settings
+    gravity: Vector2 = Vector2{ .x = 0, .y = 9.81 },
+
+    // Solver settings
+    position_iterations: u32 = 3, // Number of position correction iterations
+    velocity_iterations: u32 = 8, // Number of velocity solver iterations
+
+    // Timestep settings
+    physics_time_step: f32 = 1.0 / 60.0, // Fixed physics timestep (60 FPS)
+    max_delta_time: f32 = 1.0 / 30.0, // Maximum allowed delta time to prevent spiral of death
+
+    // Collision settings
+    allow_sleeping: bool = true, // Allow bodies to go to sleep when inactive
+    sleep_time_threshold: f32 = 5.0, // Time before a body can sleep (seconds)
+    sleep_velocity_threshold: f32 = 15.0, // Velocity threshold for sleeping
+
+    // Contact settings
+    contact_slop: f32 = 0.005, // Allowed penetration before position correction
+    baumgarte_factor: f32 = 0.2, // Position correction factor (0-1)
+
+    // Performance settings
+    enable_warm_starting: bool = true, // Reuse impulses from previous frame
+    enable_continuous_physics: bool = false, // Continuous collision detection (expensive)
+
+    // Debug settings
+    debug_draw_aabb: bool = false,
+    debug_draw_contacts: bool = false,
+    debug_draw_joints: bool = false,
+
+    // New field
+    restitution_clamp_threshold: f32 = 15.0, // Velocity threshold to kill bounce and prevent jitter
+};
 
 pub const PhysicsWorld = struct {
     allocator: std.mem.Allocator,
@@ -143,7 +176,7 @@ pub const PhysicsWorld = struct {
                         const friction2 = body2_ptr.getFriction();
 
                         // Resolve collision with combined material properties (includes friction)
-                        CollisionResponse.resolveCollisionWithMaterials(body1_ptr, body2_ptr, manifold, restitution1, restitution2, friction1, friction2);
+                        CollisionResponse.resolveCollisionWithMaterials(body1_ptr, body2_ptr, manifold, restitution1, restitution2, friction1, friction2, self.config.restitution_clamp_threshold);
 
                         // Position correction to reduce penetration
                         if (manifold.penetration > self.config.contact_slop) {

@@ -7,7 +7,7 @@ const Vector2 = rl.Vector2;
 /// Collision response and physics resolution
 pub const CollisionResponse = struct {
     /// Resolve collision between two bodies using impulse-based method
-    pub fn resolveCollision(body1: *Body, body2: *Body, manifold: ContactManifold, restitution: f32) void {
+    pub fn resolveCollision(body1: *Body, body2: *Body, manifold: ContactManifold, restitution: f32, restitution_clamp_threshold: f32) void {
         // Check body types
         const body1_dynamic = body1.isDynamic();
         const body2_dynamic = body2.isDynamic();
@@ -50,8 +50,14 @@ pub const CollisionResponse = struct {
         // Don't resolve if velocities are separating
         if (vel_along_normal > 0.0) return;
 
+        // --- ANTI-JITTER FIX ---
+        // If the closing velocity is very small, kill the bounce to prevent jittering
+        var e = restitution;
+        if (vel_along_normal > -restitution_clamp_threshold) {
+            e = 0.0;
+        }
+
         // Calculate impulse scalar
-        const e = restitution;
         var j = -(1.0 + e) * vel_along_normal;
         j /= inv_mass1 + inv_mass2;
 
@@ -132,13 +138,13 @@ pub const CollisionResponse = struct {
     }
 
     /// Resolve collision with custom material properties
-    pub fn resolveCollisionWithMaterials(body1: *Body, body2: *Body, manifold: ContactManifold, restitution1: f32, restitution2: f32, friction1: f32, friction2: f32) void {
+    pub fn resolveCollisionWithMaterials(body1: *Body, body2: *Body, manifold: ContactManifold, restitution1: f32, restitution2: f32, friction1: f32, friction2: f32, restitution_clamp_threshold: f32) void {
         // Combine material properties
         const combined_restitution = @sqrt(restitution1 * restitution2);
         const combined_friction = @sqrt(friction1 * friction2);
 
         // Resolve normal collision
-        resolveCollision(body1, body2, manifold, combined_restitution);
+        resolveCollision(body1, body2, manifold, combined_restitution, restitution_clamp_threshold);
 
         // Apply friction
         applyFriction(body1, body2, manifold, combined_friction);

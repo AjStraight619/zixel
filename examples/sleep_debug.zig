@@ -15,20 +15,6 @@ fn gameUpdate(engine: *Engine, allocator: Allocator, dt: f32) !void {
     _ = allocator;
     time_elapsed += dt;
 
-    const ball = engine.physics.getBodyById(ball_id).?;
-
-    // Log detailed sleep state every second
-    if (@mod(@as(i32, @intFromFloat(time_elapsed * 10)), 10) == 0) {
-        const dyn_body = &ball.kind.Dynamic;
-        const velocity_mag = @sqrt(dyn_body.velocity.x * dyn_body.velocity.x +
-            dyn_body.velocity.y * dyn_body.velocity.y);
-        const angular_velocity_mag = @abs(dyn_body.angular_velocity);
-
-        logging.physics.info("Time: {d:.1}s | Sleeping: {} | Sleep Timer: {d:.2}s | Vel: {d:.3} | AngVel: {d:.3}", .{ time_elapsed, ball.isSleeping(), dyn_body.sleep_time, velocity_mag, angular_velocity_mag });
-
-        logging.physics.info("  Thresholds - Vel: {d:.1} | Time: {d:.1}s | Allow Sleep: {}", .{ engine.physics.config.sleep_velocity_threshold, engine.physics.config.sleep_time_threshold, engine.physics.config.allow_sleeping });
-    }
-
     // Add impulse when spacebar is pressed
     if (zixel.rl.isKeyPressed(.space)) {
         const ball_body = engine.physics.getBodyById(ball_id).?;
@@ -164,6 +150,7 @@ pub fn main() !void {
             .allow_sleeping = true,
             .sleep_velocity_threshold = 5.0, // Lower threshold for easier testing
             .sleep_time_threshold = 3.0, // Shorter time for easier testing
+            .restitution_clamp_threshold = 25.0, // Kill bounce if closing velocity is < this
         },
     });
     defer engine.deinit();
