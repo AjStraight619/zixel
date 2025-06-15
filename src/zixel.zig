@@ -1,4 +1,3 @@
-// Core modules
 pub const engine = @import("engine/engine.zig");
 pub const physics = @import("physics/world.zig");
 pub const gui = @import("gui/gui_manager.zig");
@@ -29,7 +28,8 @@ pub const DynamicBody = @import("physics/body.zig").DynamicBody;
 pub const StaticBody = @import("physics/body.zig").StaticBody;
 pub const PhysicsShape = @import("math/shapes.zig").PhysicsShape;
 
-// Raylib re-exports (for convenience, but users shouldn't need these with our Key enum)
+// Going to try to keep reaylib our of the public api once we wrap all the functions we need
+// For now it is just for convenience
 pub const rl = @import("raylib");
 pub const Vector2 = rl.Vector2;
 pub const Rectangle = rl.Rectangle;

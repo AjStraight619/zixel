@@ -116,6 +116,16 @@ pub fn build(b: *std.Build) void {
     const run_circle_vs_rect_step = b.step("run-circle-vs-rect", "Run the circle vs rect test");
     run_circle_vs_rect_step.dependOn(&run_circle_vs_rect.step);
 
+    const kinematic_test_exe = createExampleExe(b, "kinematic_test", "tests/kinematic_test.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
+    const run_kinematic_test = b.addRunArtifact(kinematic_test_exe);
+    const run_kinematic_test_step = b.step("run-kinematic-test", "Run the kinematic body test");
+    run_kinematic_test_step.dependOn(&run_kinematic_test.step);
+
+    const sleep_debug_exe = createExampleExe(b, "sleep_debug", "examples/sleep_debug.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
+    const run_sleep_debug = b.addRunArtifact(sleep_debug_exe);
+    const run_sleep_debug_step = b.step("run-sleep-debug", "Run the sleep system debug test");
+    run_sleep_debug_step.dependOn(&run_sleep_debug.step);
+
     // const physics_verification_exe = createExampleExe(b, "physics_verification", "examples/physics_verification.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
     // const run_physics_verification = b.addRunArtifact(physics_verification_exe);
     // const run_physics_verification_step = b.step("run-physics-tests", "Run the physics verification tests");

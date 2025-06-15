@@ -65,13 +65,11 @@ pub const CollisionResponse = struct {
             body1.kind.Dynamic.velocity.x -= impulse.x * inv_mass1;
             body1.kind.Dynamic.velocity.y -= impulse.y * inv_mass1;
         }
-        // Kinematic bodies don't get their velocity changed by collisions
 
         if (body2_dynamic) {
             body2.kind.Dynamic.velocity.x += impulse.x * inv_mass2;
             body2.kind.Dynamic.velocity.y += impulse.y * inv_mass2;
         }
-        // Kinematic bodies don't get their velocity changed by collisions
     }
 
     /// Correct positions to resolve penetration
@@ -95,14 +93,40 @@ pub const CollisionResponse = struct {
 
         // Only move dynamic bodies
         if (body1_dynamic) {
-            body1.kind.Dynamic.position.x -= correction.x * inv_mass1;
-            body1.kind.Dynamic.position.y -= correction.y * inv_mass1;
+            const position_change = Vector2{
+                .x = correction.x * inv_mass1,
+                .y = correction.y * inv_mass1,
+            };
+
+            // Update position
+            body1.kind.Dynamic.position.x -= position_change.x;
+            body1.kind.Dynamic.position.y -= position_change.y;
+
+            // CRITICAL FIX: Adjust velocity to match position correction
+            // This prevents artificial velocity from position changes
+            // if (dt > 0.0) {
+            //     body1.kind.Dynamic.velocity.x -= position_change.x / dt;
+            //     body1.kind.Dynamic.velocity.y -= position_change.y / dt;
+            // }
         }
         // Kinematic and static bodies don't get position-corrected
 
         if (body2_dynamic) {
-            body2.kind.Dynamic.position.x += correction.x * inv_mass2;
-            body2.kind.Dynamic.position.y += correction.y * inv_mass2;
+            const position_change = Vector2{
+                .x = correction.x * inv_mass2,
+                .y = correction.y * inv_mass2,
+            };
+
+            // Update position
+            body2.kind.Dynamic.position.x += position_change.x;
+            body2.kind.Dynamic.position.y += position_change.y;
+
+            // CRITICAL FIX: Adjust velocity to match position correction
+            // This prevents artificial velocity from position changes
+            // if (dt > 0.0) {
+            //     body2.kind.Dynamic.velocity.x += position_change.x / dt;
+            //     body2.kind.Dynamic.velocity.y += position_change.y / dt;
+            // }
         }
         // Kinematic and static bodies don't get position-corrected
     }

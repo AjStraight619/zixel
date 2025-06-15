@@ -66,15 +66,14 @@ pub fn main() !void {
         },
     });
 
-    game.handle_input = handleInput;
-    game.render_game = renderFn;
+    defer game.deinit();
+
+    // Set callbacks using direct field assignment (no setters needed)
+    game.update_game = gameUpdate;
+    game.render_game = gameRender;
 
     // Set the input manager on the engine
     game.setInputManager(&input_mgr);
-
-    game.physics.gravity = Vector2{ .x = 0, .y = 200 };
-
-    defer game.deinit();
 
     const window = game.window;
     const window_size = window.getSize();
@@ -115,14 +114,15 @@ pub fn main() !void {
     try game.run();
 }
 
-fn handleInput(engine: *Engine, allocator: Allocator) anyerror!void {
-    _ = allocator;
+fn gameUpdate(engine: *Engine, allocator: Allocator, dt: f32) !void {
+    _ = dt; // Suppress unused parameter warning
+    _ = allocator; // Suppress unused parameter warning
 
-    // Get input manager with the correct type
+    // Handle input in the update function
     var input_mgr = engine.getInputManager(zixel.input.InputManager(PlayerAction));
 
     if (player_body_id) |body_id| {
-        var body = engine.physics.getBody(body_id) orelse return;
+        var body = engine.physics.getBodyById(body_id) orelse return;
 
         // Movement with our clean input system
         if (input_mgr.isActionHeld(.move_left)) {
@@ -139,8 +139,8 @@ fn handleInput(engine: *Engine, allocator: Allocator) anyerror!void {
     }
 }
 
-fn renderFn(eng: *Engine, alloc: Allocator) anyerror!void {
-    const world = eng.physics;
+fn gameRender(engine: *Engine, alloc: Allocator) !void {
+    const world = engine.physics;
 
     for (world.bodies.items) |*body| {
         // Highlight the player body in blue, others in red/green

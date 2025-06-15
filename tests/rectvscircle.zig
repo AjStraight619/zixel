@@ -12,7 +12,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
     // Default engine config
-    var engine = try Engine.init(allocator, .{});
+    var engine = Engine.init(allocator, .{});
     try spawnCicleDynamicVsRectStatic(&engine);
     defer engine.deinit();
 }

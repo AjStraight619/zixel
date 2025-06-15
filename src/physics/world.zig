@@ -11,6 +11,9 @@ const resolveCollision = collision.resolveCollision;
 const correctPositions = collision.correctPositions;
 const ContactManifold = collision.ContactManifold;
 const CollisionResponse = @import("response.zig").CollisionResponse;
+const Engine = @import("../engine/engine.zig").Engine;
+
+const logging = @import("../core/logging.zig");
 
 pub const PhysicsWorld = struct {
     allocator: std.mem.Allocator,
@@ -38,21 +41,26 @@ pub const PhysicsWorld = struct {
         self.bodies.deinit();
     }
 
-    pub fn update(self: *Self, deltaTime: f32) void {
+    pub fn update(self: *Self, engine: *Engine, deltaTime: f32) void {
         // Clamp delta time to prevent spiral of death
         const clamped_dt = @min(deltaTime, self.config.max_delta_time);
         self.accumulated_time += clamped_dt;
 
         // Fixed timestep physics simulation
         while (self.accumulated_time >= self.config.physics_time_step) {
-            self.stepPhysics(self.config.physics_time_step);
+            self.stepPhysics(engine, self.config.physics_time_step);
             self.accumulated_time -= self.config.physics_time_step;
             self.step_count += 1;
         }
     }
 
-    fn stepPhysics(self: *Self, dt: f32) void {
-        // Apply gravity and integrate forces
+    fn stepPhysics(self: *Self, engine: *Engine, dt: f32) void {
+        // Handle sleeping bodies FIRST - before physics changes velocities
+        if (self.config.allow_sleeping) {
+            self.updateSleepingBodies(dt);
+        }
+
+        // Apply gravity and integrate forces (but NOT position yet)
         for (self.bodies.items) |*body| {
             if (body.isDynamic() and !body.isSleeping()) {
                 // Apply gravity
@@ -61,31 +69,30 @@ pub const PhysicsWorld = struct {
                     .y = self.config.gravity.y * body.kind.Dynamic.mass,
                 };
                 body.applyForce(gravity_force);
+
+                // Only update velocity from forces, NOT position yet
+                const dyn_body = &body.kind.Dynamic;
+                dyn_body.velocity = dyn_body.velocity.add(dyn_body.acceleration.scale(dt));
+                dyn_body.acceleration = Vector2{ .x = 0.0, .y = 0.0 };
             }
         }
 
-        // Velocity iterations - integrate velocities
-        for (0..self.config.velocity_iterations) |_| {
-            for (self.bodies.items) |*body| {
-                if (body.isDynamic() and !body.isSleeping()) {
-                    body.update(dt);
-                } else if (body.isKinematic()) {
-                    // Kinematic bodies also need to be updated to move
-                    body.update(dt);
-                }
+        // Collision detection and response BEFORE position integration
+        self.detectAndResolveCollisions(engine);
+
+        // Position integration AFTER collision response
+        for (self.bodies.items) |*body| {
+            if (body.isDynamic() and !body.isSleeping()) {
+                const dyn_body = &body.kind.Dynamic;
+                dyn_body.position = dyn_body.position.add(dyn_body.velocity.scale(dt));
+            } else if (body.isKinematic()) {
+                // Kinematic bodies also need to be updated to move
+                body.update(dt);
             }
-        }
-
-        // Collision detection and response
-        self.detectAndResolveCollisions();
-
-        // Handle sleeping bodies if enabled
-        if (self.config.allow_sleeping) {
-            self.updateSleepingBodies(dt);
         }
     }
 
-    fn detectAndResolveCollisions(self: *Self) void {
+    fn detectAndResolveCollisions(self: *Self, engine: *Engine) void {
         var i: usize = 0;
         while (i < self.bodies.items.len) : (i += 1) {
             var body1_ptr = &self.bodies.items[i];
@@ -111,12 +118,22 @@ pub const PhysicsWorld = struct {
                 if (aabb1.intersects(aabb2)) {
                     // Narrowphase: Detailed collision detection
                     if (checkBodiesCollision(body1_ptr, body2_ptr)) |manifold| {
-                        // Wake up bodies involved in collision
-                        body1_ptr.wakeUp();
-                        body2_ptr.wakeUp();
+                        // --- FIX: Wake-up logic refinement ---
+                        const body1_is_active = !body1_ptr.isSleeping() and body1_ptr.isDynamic();
+                        const body2_is_active = !body2_ptr.isSleeping() and body2_ptr.isDynamic();
 
-                        if (self.config.debug_draw_contacts) {
-                            std.debug.print("Collision between body {} and {} at ({:.2}, {:.2}) with penetration {:.3}\n", .{ manifold.body1_id, manifold.body2_id, manifold.point.x, manifold.point.y, manifold.penetration });
+                        // Only process wake-up logic if there's a reason to
+                        if (body1_is_active or body2_is_active) {
+                            const vel1 = body1_ptr.getVelocity();
+                            const vel2 = body2_ptr.getVelocity();
+                            const rel_vel = Vector2{ .x = vel2.x - vel1.x, .y = vel2.y - vel1.y };
+                            const vel_along_normal = rel_vel.x * manifold.normal.x + rel_vel.y * manifold.normal.y;
+
+                            // Wake up bodies if the impact is significant enough
+                            if (vel_along_normal < -self.config.sleep_velocity_threshold) {
+                                if (!body1_is_active) body1_ptr.wakeUp();
+                                if (!body2_is_active) body2_ptr.wakeUp();
+                            }
                         }
 
                         // Calculate combined restitution and friction using both bodies' properties
@@ -130,7 +147,13 @@ pub const PhysicsWorld = struct {
 
                         // Position correction to reduce penetration
                         if (manifold.penetration > self.config.contact_slop) {
-                            correctPositions(body1_ptr, body2_ptr, manifold, self.config.baumgarte_factor);
+                            CollisionResponse.correctPositions(body1_ptr, body2_ptr, manifold, self.config.baumgarte_factor);
+                        }
+
+                        if (engine.collision_callback) |callback| {
+                            callback(engine, self.allocator, body1_ptr, body2_ptr) catch |err| {
+                                logging.general.err("Error in collision callback: {}\n", .{err});
+                            };
                         }
                     }
                 }

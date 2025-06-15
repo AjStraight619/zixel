@@ -158,6 +158,10 @@ pub const Body = struct {
     pub fn wakeUp(self: *Body) void {
         switch (self.kind) {
             .Dynamic => |*dyn_body| {
+                // Add debug logging for ball (ID 1)
+                if (self.id == 1) {
+                    std.debug.print("SLEEP DEBUG: WAKE UP CALLED! Body ID {}, sleep_time was {d:.3}, resetting to 0.0\n", .{ self.id, dyn_body.sleep_time });
+                }
                 dyn_body.is_sleeping = false;
                 dyn_body.sleep_time = 0.0;
             },
@@ -176,6 +180,14 @@ pub const Body = struct {
             .Kinematic => {}, // Kinematic bodies don't sleep
             .Static => {}, // Static bodies don't sleep
         }
+    }
+
+    pub fn getVelocity(self: *const Body) Vector2 {
+        return switch (self.kind) {
+            .Dynamic => |dyn_body| dyn_body.velocity,
+            .Kinematic => |kin_body| kin_body.velocity,
+            .Static => Vector2.zero(),
+        };
     }
 };
 

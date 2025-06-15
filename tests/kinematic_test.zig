@@ -38,8 +38,8 @@ pub fn main() !void {
     _ = try engine.physics.addBody(right_wall);
 
     // Set the callback functions
-    engine.setUpdateFn(gameUpdate);
-    engine.setRenderFn(gameRender);
+    engine.update_game = gameUpdate;
+    engine.render_game = gameRender;
 
     // Run the simulation
     try engine.run();
