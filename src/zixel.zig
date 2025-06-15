@@ -1,23 +1,35 @@
-// Main library exports
+// Core modules
 pub const engine = @import("engine/engine.zig");
 pub const physics = @import("physics/world.zig");
 pub const gui = @import("gui/gui_manager.zig");
-pub const input = @import("input/input_manager.zig");
+
+// Input system
+pub const input = struct {
+    pub const InputManager = @import("input/input_manager.zig").InputManager;
+    pub const InputBehavior = @import("input/input_manager.zig").InputBehavior;
+    pub const InputContext = @import("input/input_manager.zig").InputContext;
+    pub const GuiAction = @import("input/input_manager.zig").GuiAction;
+    pub const Key = @import("input/keys.zig").Key;
+};
+
+// Utilities
 pub const assets = @import("assets/assets.zig");
 pub const logging = @import("core/logging.zig");
 
-// Export main engine components
-pub const Engine = @import("engine/engine.zig").Engine;
-pub const EngineConfig = @import("engine/engine.zig").EngineConfig;
+// Re-export commonly used types
+pub const Engine = engine.Engine;
+pub const EngineConfig = engine.EngineConfig;
+pub const WindowConfig = @import("graphics/window.zig").WindowConfig;
+pub const PhysicsWorld = physics.PhysicsWorld;
+pub const GUI = gui.GUI;
 
-pub const rl = @import("raylib");
-pub const Vector2 = rl.Vector2;
-pub const Rectangle = rl.Rectangle;
-
-pub const utils = @import("math/utils.zig");
-
+// Physics types
 pub const Body = @import("physics/body.zig").Body;
 pub const DynamicBody = @import("physics/body.zig").DynamicBody;
 pub const StaticBody = @import("physics/body.zig").StaticBody;
 pub const PhysicsShape = @import("math/shapes.zig").PhysicsShape;
-pub const GameAction = @import("input/keybinds.zig").GameAction;
+
+// Raylib re-exports (for convenience, but users shouldn't need these with our Key enum)
+pub const rl = @import("raylib");
+pub const Vector2 = rl.Vector2;
+pub const Rectangle = rl.Rectangle;

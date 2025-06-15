@@ -11,6 +11,6 @@ comptime {
     _ = @import("math/shapes.zig");
     _ = @import("math/aabb.zig");
     _ = @import("graphics/window.zig");
-    _ = @import("graphics/config.zig");
-    _ = @import("physics/config.zig");
+    _ = @import("assets/cache.zig");
+    _ = @import("assets/assets.zig");
 }
