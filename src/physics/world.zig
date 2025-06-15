@@ -69,6 +69,9 @@ pub const PhysicsWorld = struct {
             for (self.bodies.items) |*body| {
                 if (body.isDynamic() and !body.isSleeping()) {
                     body.update(dt);
+                } else if (body.isKinematic()) {
+                    // Kinematic bodies also need to be updated to move
+                    body.update(dt);
                 }
             }
         }
@@ -174,7 +177,7 @@ pub const PhysicsWorld = struct {
         return id;
     }
 
-    pub fn getBody(self: *Self, id: usize) ?*Body {
+    pub fn getBodyById(self: *Self, id: usize) ?*Body {
         if (id < self.bodies.items.len) {
             return &self.bodies.items[id];
         }
