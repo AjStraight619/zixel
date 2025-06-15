@@ -11,6 +11,7 @@ const GUIManager = @import("../gui/gui_manager.zig").GUI;
 const inputManager = @import("../input/input_manager.zig");
 const InputManager = inputManager.InputManager;
 const GuiAction = inputManager.GuiAction;
+const Body = @import("../physics/body.zig").Body;
 
 pub const EngineConfig = struct {
     window: WindowConfig = .{},
@@ -23,6 +24,7 @@ pub const EngineConfig = struct {
 pub const HandleInputFn = *const fn (engine: *Engine, alloc: Allocator) anyerror!void;
 pub const UpdateFn = *const fn (engine: *Engine, alloc: Allocator, dt: f32) anyerror!void;
 pub const RenderFn = *const fn (engine: *Engine, alloc: Allocator) anyerror!void;
+pub const Collision_Callback = *const fn (engine: *Engine, alloc: Allocator, body1: *Body, body2: *Body) anyerror!void;
 
 pub const Engine = struct {
     alloc: Allocator,
@@ -32,10 +34,10 @@ pub const Engine = struct {
     target_fps: u32,
     assets: Assets,
     gui: GUIManager,
-    // Use optional function pointers for callback fields
-    handle_input: ?HandleInputFn = null,
+    // Should require the user to have these.  @compiileError if they dont have these implemented
     update_game: ?UpdateFn = null,
     render_game: ?RenderFn = null,
+    collision_callback: ?Collision_Callback = null,
 
     const Self = @This();
 
@@ -51,13 +53,9 @@ pub const Engine = struct {
             .alloc = alloc,
             .window = window,
             .physics = physics,
-            .input_manager_ptr = null,
             .target_fps = config.target_fps,
             .assets = assets,
             .gui = gui,
-            .handle_input = null,
-            .update_game = null,
-            .render_game = null,
         };
     }
 
@@ -65,19 +63,6 @@ pub const Engine = struct {
         self.window.deinit();
         self.physics.deinit();
         self.gui.deinit();
-    }
-
-    // Setter functions now accept function pointers
-    pub fn setHandleInputFn(self: *Self, func: HandleInputFn) void {
-        self.handle_input = func;
-    }
-
-    pub fn setUpdateFn(self: *Self, func: UpdateFn) void {
-        self.update_game = func;
-    }
-
-    pub fn setRenderFn(self: *Self, func: RenderFn) void {
-        self.render_game = func;
     }
 
     pub fn setTargetFPS(self: *Self, fps: u32) void {
@@ -95,21 +80,12 @@ pub const Engine = struct {
         const physics_dt = self.physics.getPhysicsTimeStep();
 
         while (!rl.windowShouldClose()) {
-            // Input handling - skip if no input manager is set
-            if (self.input_manager_ptr != null) {
-                // Note: We can't call handleInput here because we don't know the concrete type
-                // Users will need to handle input in their handle_input callback
-                if (self.handle_input) |input_fn_ptr| {
-                    try input_fn_ptr(self, self.alloc);
-                }
-            }
-
             const frame_time = rl.getFrameTime();
             accumulator += frame_time;
 
             // Physics simulation with fixed timestep
             while (accumulator >= physics_dt) {
-                self.physics.update(physics_dt);
+                self.physics.update(self, physics_dt);
                 if (self.update_game) |update_fn_ptr| {
                     try update_fn_ptr(self, self.alloc, physics_dt);
                 }
@@ -129,41 +105,23 @@ pub const Engine = struct {
         }
     }
 
-    pub fn setGravity(self: *Self, gravity: rl.Vector2) void {
-        self.physics.config.gravity = gravity;
-        self.physics.gravity = gravity;
-    }
-
-    pub fn getGravity(self: *const Self) rl.Vector2 {
-        return self.physics.gravity;
-    }
-
     pub fn enableDebugDrawing(self: *Self, aabb: bool, contacts: bool, joints: bool) void {
         self.physics.config.debug_draw_aabb = aabb;
         self.physics.config.debug_draw_contacts = contacts;
         self.physics.config.debug_draw_joints = joints;
     }
 
-    pub fn setInputManager(self: *Self, manager: anytype) void {
-        self.input_manager_ptr = manager;
-    }
-
     pub fn getInputManager(self: *Self, comptime T: type) *T {
         return @ptrCast(@alignCast(self.input_manager_ptr.?));
+    }
+
+    pub fn setInputManager(self: *Self, manager: anytype) void {
+        self.input_manager_ptr = @ptrCast(@alignCast(manager));
     }
 
     /// Render physics debug information (AABBs, contacts, joints)
     pub fn debugRenderPhysics(self: *Self) void {
         self.physics.debugRender();
-    }
-
-    pub fn getPhysicsStepCount(self: *const Self) u64 {
-        return self.physics.getStepCount();
-    }
-
-    // GUI methods
-    pub fn getGUI(self: *Self) *GUIManager {
-        return &self.gui;
     }
 
     pub fn toggleDebugPanel(self: *Self) void {

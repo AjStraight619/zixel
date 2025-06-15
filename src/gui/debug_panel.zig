@@ -62,8 +62,8 @@ pub const DebugPanel = struct {
 
         // Physics Info Display
         if (self.show_physics_info) {
-            const gravity = engine.getGravity();
-            const step_count = engine.getPhysicsStepCount();
+            const gravity = engine.physics.gravity;
+            const step_count = engine.physics.getStepCount();
 
             const info_text = std.fmt.allocPrintZ(std.heap.page_allocator, "Gravity: ({d:.1}, {d:.1})\nSteps: {d}", .{ gravity.x, gravity.y, step_count }) catch "Error displaying info";
             defer std.heap.page_allocator.free(info_text);
