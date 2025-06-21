@@ -3,6 +3,7 @@ const rl = @import("raylib");
 const Body = @import("body.zig").Body;
 const Vector2 = rl.Vector2;
 const ArrayList = std.ArrayList;
+const Allocator = std.mem.Allocator;
 
 /// Collision pair - two bodies that might be colliding
 pub const CollisionPair = struct {
@@ -23,13 +24,13 @@ pub const SpatialHash = struct {
     cells: std.HashMap(u64, ArrayList(*Body), std.hash_map.AutoContext(u64), std.hash_map.default_max_load_percentage),
 
     /// Allocator for dynamic arrays
-    allocator: std.mem.Allocator,
+    alloc: Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, cell_size: f32) SpatialHash {
+    pub fn init(alloc: Allocator, cell_size: f32) SpatialHash {
         return SpatialHash{
             .cell_size = cell_size,
-            .cells = std.HashMap(u64, ArrayList(*Body), std.hash_map.AutoContext(u64), std.hash_map.default_max_load_percentage).init(allocator),
-            .allocator = allocator,
+            .cells = std.HashMap(u64, ArrayList(*Body), std.hash_map.AutoContext(u64), std.hash_map.default_max_load_percentage).init(alloc),
+            .alloc = alloc,
         };
     }
 
@@ -108,7 +109,7 @@ pub const SpatialHash = struct {
                 // Get or create the cell's body list
                 const result = try self.cells.getOrPut(hash);
                 if (!result.found_existing) {
-                    result.value_ptr.* = ArrayList(*Body).init(self.allocator);
+                    result.value_ptr.* = ArrayList(*Body).init(self.alloc);
                 }
 
                 // Add body to this cell
@@ -122,7 +123,7 @@ pub const SpatialHash = struct {
         potential_pairs.clearRetainingCapacity();
 
         // Use a set to avoid duplicate pairs
-        var seen_pairs = std.HashMap(u64, void, std.hash_map.AutoContext(u64), std.hash_map.default_max_load_percentage).init(self.allocator);
+        var seen_pairs = std.HashMap(u64, void, std.hash_map.AutoContext(u64), std.hash_map.default_max_load_percentage).init(self.alloc);
         defer seen_pairs.deinit();
 
         // Check each cell for internal collisions
@@ -162,7 +163,7 @@ pub const SpatialHash = struct {
         const max_grid = self.getGridCoords(max_pos);
 
         // Use a set to avoid duplicates (bodies can be in multiple cells)
-        var seen_bodies = std.HashMap(usize, void, std.hash_map.AutoContext(usize), std.hash_map.default_max_load_percentage).init(self.allocator);
+        var seen_bodies = std.HashMap(usize, void, std.hash_map.AutoContext(usize), std.hash_map.default_max_load_percentage).init(self.alloc);
         defer seen_bodies.deinit();
 
         // Search all overlapping cells

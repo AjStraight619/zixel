@@ -1,10 +1,9 @@
 const std = @import("std");
-const rl = @import("raylib"); // Import raylib
+const rl = @import("raylib");
 const Allocator = std.mem.Allocator;
 const Body = @import("body.zig").Body;
-const Vector2 = rl.Vector2; // Use Raylib's Vector2
+const Vector2 = rl.Vector2;
 const collision = @import("collision.zig");
-// Updated imports for new modular structure
 const checkBodiesCollision = collision.checkBodiesCollision;
 const resolveCollision = collision.resolveCollision;
 const correctPositions = collision.correctPositions;
@@ -95,16 +94,16 @@ pub const PhysicsWorld = struct {
 
         // Apply gravity and integrate forces (but NOT position yet)
         for (self.bodies.items) |*body| {
-            if (body.isDynamic() and !body.isSleeping()) {
+            if (body.kind == .dynamic and !body.isSleeping()) {
                 // Apply gravity
                 const gravity_force = Vector2{
-                    .x = self.config.gravity.x * body.kind.Dynamic.mass,
-                    .y = self.config.gravity.y * body.kind.Dynamic.mass,
+                    .x = self.config.gravity.x * body.kind.dynamic.mass,
+                    .y = self.config.gravity.y * body.kind.dynamic.mass,
                 };
                 body.applyForce(gravity_force);
 
                 // Only update velocity from forces, NOT position yet
-                const dyn_body = &body.kind.Dynamic;
+                const dyn_body = &body.kind.dynamic;
                 dyn_body.velocity = dyn_body.velocity.add(dyn_body.acceleration.scale(dt));
                 dyn_body.acceleration = Vector2{ .x = 0.0, .y = 0.0 };
             }
@@ -115,10 +114,10 @@ pub const PhysicsWorld = struct {
 
         // Position integration AFTER collision response
         for (self.bodies.items) |*body| {
-            if (body.isDynamic() and !body.isSleeping()) {
-                const dyn_body = &body.kind.Dynamic;
+            if (body.kind == .dynamic and !body.isSleeping()) {
+                const dyn_body = &body.kind.dynamic;
                 dyn_body.position = dyn_body.position.add(dyn_body.velocity.scale(dt));
-            } else if (body.isKinematic()) {
+            } else if (body.kind == .kinematic) {
                 // Kinematic bodies also need to be updated to move
                 body.update(dt);
             }
@@ -135,7 +134,7 @@ pub const PhysicsWorld = struct {
                 var body2_ptr = &self.bodies.items[j];
 
                 // Skip collision between two static bodies
-                if (!body1_ptr.isDynamic() and !body2_ptr.isDynamic()) {
+                if (body1_ptr.kind != .dynamic and body2_ptr.kind != .dynamic) {
                     continue;
                 }
 
@@ -152,8 +151,8 @@ pub const PhysicsWorld = struct {
                     // Narrowphase: Detailed collision detection
                     if (checkBodiesCollision(body1_ptr, body2_ptr)) |manifold| {
                         // --- FIX: Wake-up logic refinement ---
-                        const body1_is_active = !body1_ptr.isSleeping() and body1_ptr.isDynamic();
-                        const body2_is_active = !body2_ptr.isSleeping() and body2_ptr.isDynamic();
+                        const body1_is_active = !body1_ptr.isSleeping() and body1_ptr.kind == .dynamic;
+                        const body2_is_active = !body2_ptr.isSleeping() and body2_ptr.kind == .dynamic;
 
                         // Only process wake-up logic if there's a reason to
                         if (body1_is_active or body2_is_active) {
@@ -183,10 +182,13 @@ pub const PhysicsWorld = struct {
                             CollisionResponse.correctPositions(body1_ptr, body2_ptr, manifold, self.config.baumgarte_factor);
                         }
 
-                        if (engine.collision_callback) |callback| {
-                            callback(engine, self.allocator, body1_ptr, body2_ptr) catch |err| {
-                                logging.general.err("Error in collision callback: {}\n", .{err});
-                            };
+                        // Call scene-specific collision callback if available
+                        if (engine.current_scene) |scene| {
+                            if (scene.collision_callback) |callback| {
+                                callback(scene.context, body1_ptr, body2_ptr) catch |err| {
+                                    logging.general.err("Error in collision callback: {}\n", .{err});
+                                };
+                            }
                         }
                     }
                 }
@@ -196,8 +198,8 @@ pub const PhysicsWorld = struct {
 
     fn updateSleepingBodies(self: *Self, dt: f32) void {
         for (self.bodies.items) |*body| {
-            if (body.isDynamic() and !body.isSleeping()) {
-                const dyn_body = &body.kind.Dynamic;
+            if (body.kind == .dynamic and !body.isSleeping()) {
+                const dyn_body = &body.kind.dynamic;
                 const velocity_mag = @sqrt(dyn_body.velocity.x * dyn_body.velocity.x +
                     dyn_body.velocity.y * dyn_body.velocity.y);
                 const angular_velocity_mag = @abs(dyn_body.angular_velocity);
@@ -293,7 +295,7 @@ pub const PhysicsWorld = struct {
                 var body2_ptr = &self.bodies.items[j];
 
                 // Skip collision between two static bodies
-                if (!body1_ptr.isDynamic() and !body2_ptr.isDynamic()) {
+                if (body1_ptr.kind != .dynamic and body2_ptr.kind != .dynamic) {
                     continue;
                 }
 

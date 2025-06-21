@@ -31,133 +31,105 @@ pub const KinematicBodyOptions = struct {
 };
 
 pub const Body = struct {
-    id: usize = 0,
+    id: usize = 0, // Tracks body and links to scene data/rendering
+    persist: bool = false, // Whether this body survives scene changes
     kind: union(enum) {
-        Static: StaticBody,
-        Dynamic: DynamicBody,
-        Kinematic: KinematicBody,
+        static: StaticBody,
+        dynamic: DynamicBody,
+        kinematic: KinematicBody,
     },
 
     pub fn initStatic(shape: PhysicsShape, position: Vector2, opts: StaticBodyOptions) Body {
         return Body{
-            .kind = .{ .Static = StaticBody.init(shape, position, opts) },
+            .kind = .{ .static = StaticBody.init(shape, position, opts) },
         };
     }
 
     pub fn initDynamic(shape: PhysicsShape, position: Vector2, opts: DynamicBodyOptions) Body {
         return Body{
-            .kind = .{ .Dynamic = DynamicBody.init(shape, position, opts) },
+            .kind = .{ .dynamic = DynamicBody.init(shape, position, opts) },
         };
     }
 
     pub fn initKinematic(shape: PhysicsShape, position: Vector2, opts: KinematicBodyOptions) Body {
         return Body{
-            .kind = .{ .Kinematic = KinematicBody.init(shape, position, opts) },
+            .kind = .{ .kinematic = KinematicBody.init(shape, position, opts) },
         };
     }
 
     pub fn update(self: *Body, deltaTime: f32) void {
         switch (self.kind) {
-            .Dynamic => |*dyn_body| dyn_body.update(deltaTime),
-            .Kinematic => |*kin_body| kin_body.update(deltaTime),
-            .Static => |_| {},
+            .dynamic => |*dyn_body| dyn_body.update(deltaTime),
+            .kinematic => |*kin_body| kin_body.update(deltaTime),
+            .static => |_| {},
         }
     }
 
     pub fn applyForce(self: *Body, force: Vector2) void {
         switch (self.kind) {
-            .Dynamic => |*dyn_body| dyn_body.applyForce(force),
-            .Kinematic => |_| {}, // Kinematic bodies ignore forces
-            .Static => |_| {},
+            .dynamic => |*dyn_body| dyn_body.applyForce(force),
+            .kinematic => |_| {}, // Kinematic bodies ignore forces
+            .static => |_| {},
         }
     }
 
     pub fn draw(self: *const Body, color: rl.Color) void {
         switch (self.kind) {
-            .Dynamic => |dyn_body| dyn_body.draw(color),
-            .Kinematic => |kin_body| kin_body.draw(color),
-            .Static => |stat_body| stat_body.draw(color),
+            .dynamic => |dyn_body| dyn_body.draw(color),
+            .kinematic => |kin_body| kin_body.draw(color),
+            .static => |stat_body| stat_body.draw(color),
         }
     }
 
     pub fn aabb(self: *const Body) AABB {
         return switch (self.kind) {
-            .Dynamic => |dyn_body| dyn_body.aabb(),
-            .Kinematic => |kin_body| kin_body.aabb(),
-            .Static => |stat_body| stat_body.aabb(),
+            .dynamic => |dyn_body| dyn_body.aabb(),
+            .kinematic => |kin_body| kin_body.aabb(),
+            .static => |stat_body| stat_body.aabb(),
         };
     }
 
-    pub fn isDynamic(self: Body) bool {
+    /// Generic field accessor using comptime to reduce repetitive switch statements
+    fn getField(self: *const Body, comptime field_name: []const u8) @TypeOf(@field(@field(self.kind, "dynamic"), field_name)) {
         return switch (self.kind) {
-            .Dynamic => true,
-            .Kinematic => false,
-            .Static => false,
-        };
-    }
-
-    pub fn isKinematic(self: Body) bool {
-        return switch (self.kind) {
-            .Dynamic => false,
-            .Kinematic => true,
-            .Static => false,
+            inline else => |body| @field(body, field_name),
         };
     }
 
     pub fn getShape(self: *const Body) PhysicsShape {
-        return switch (self.kind) {
-            .Dynamic => |dyn_body| dyn_body.shape,
-            .Kinematic => |kin_body| kin_body.shape,
-            .Static => |stat_body| stat_body.shape,
-        };
+        return self.getField("shape");
     }
 
     pub fn getPosition(self: *const Body) Vector2 {
-        return switch (self.kind) {
-            .Dynamic => |dyn_body| dyn_body.position,
-            .Kinematic => |kin_body| kin_body.position,
-            .Static => |stat_body| stat_body.position,
-        };
+        return self.getField("position");
     }
 
     pub fn getRotation(self: *const Body) f32 {
-        return switch (self.kind) {
-            .Dynamic => |dyn_body| dyn_body.rotation,
-            .Kinematic => |kin_body| kin_body.rotation,
-            .Static => |stat_body| stat_body.rotation,
-        };
+        return self.getField("rotation");
     }
 
     /// Get the restitution (bounciness) of this body
     pub fn getRestitution(self: *const Body) f32 {
-        return switch (self.kind) {
-            .Dynamic => |dyn_body| dyn_body.restitution,
-            .Kinematic => |kin_body| kin_body.restitution,
-            .Static => |stat_body| stat_body.restitution,
-        };
+        return self.getField("restitution");
     }
 
     /// Get the friction of this body
     pub fn getFriction(self: *const Body) f32 {
-        return switch (self.kind) {
-            .Dynamic => |dyn_body| dyn_body.friction,
-            .Kinematic => |kin_body| kin_body.friction,
-            .Static => |stat_body| stat_body.friction,
-        };
+        return self.getField("friction");
     }
 
     // Sleep management
     pub fn isSleeping(self: *const Body) bool {
         return switch (self.kind) {
-            .Dynamic => |dyn_body| dyn_body.is_sleeping,
-            .Kinematic => false, // Kinematic bodies don't sleep
-            .Static => false, // Static bodies are never considered "sleeping"
+            .dynamic => |dyn_body| dyn_body.is_sleeping,
+            .kinematic => false, // Kinematic bodies don't sleep
+            .static => false, // Static bodies are never considered "sleeping"
         };
     }
 
     pub fn wakeUp(self: *Body) void {
         switch (self.kind) {
-            .Dynamic => |*dyn_body| {
+            .dynamic => |*dyn_body| {
                 // Add debug logging for ball (ID 1)
                 if (self.id == 1) {
                     std.debug.print("SLEEP DEBUG: WAKE UP CALLED! Body ID {}, sleep_time was {d:.3}, resetting to 0.0\n", .{ self.id, dyn_body.sleep_time });
@@ -165,28 +137,28 @@ pub const Body = struct {
                 dyn_body.is_sleeping = false;
                 dyn_body.sleep_time = 0.0;
             },
-            .Kinematic => {}, // Kinematic bodies don't need waking
-            .Static => {}, // Static bodies don't need waking
+            .kinematic => {}, // Kinematic bodies don't need waking
+            .static => {}, // Static bodies don't need waking
         }
     }
 
     pub fn putToSleep(self: *Body) void {
         switch (self.kind) {
-            .Dynamic => |*dyn_body| {
+            .dynamic => |*dyn_body| {
                 dyn_body.is_sleeping = true;
                 dyn_body.velocity = Vector2{ .x = 0.0, .y = 0.0 };
                 dyn_body.angular_velocity = 0.0;
             },
-            .Kinematic => {}, // Kinematic bodies don't sleep
-            .Static => {}, // Static bodies don't sleep
+            .kinematic => {}, // Kinematic bodies don't sleep
+            .static => {}, // Static bodies don't sleep
         }
     }
 
     pub fn getVelocity(self: *const Body) Vector2 {
         return switch (self.kind) {
-            .Dynamic => |dyn_body| dyn_body.velocity,
-            .Kinematic => |kin_body| kin_body.velocity,
-            .Static => Vector2.zero(),
+            .dynamic => |dyn_body| dyn_body.velocity,
+            .kinematic => |kin_body| kin_body.velocity,
+            .static => Vector2.zero(),
         };
     }
 };
