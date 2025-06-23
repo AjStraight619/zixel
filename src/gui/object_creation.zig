@@ -346,10 +346,15 @@ pub const ObjectCreation = struct {
             });
 
         // Add to physics world
-        _ = engine.physics.addBody(body) catch |err| {
-            std.log.err("Failed to create object: {}", .{err});
+        if (engine.getCurrentPhysics()) |physics| {
+            _ = physics.addBody(body) catch |err| {
+                std.log.err("Failed to create object: {}", .{err});
+                return;
+            };
+        } else {
+            std.log.err("No physics world available to create object in", .{});
             return;
-        };
+        }
 
         // Log the creation
         const body_type_str = if (self.selected_body_is_dynamic) "dynamic" else "static";

@@ -106,28 +106,8 @@ pub fn build(b: *std.Build) void {
     const run_basic_step = b.step("run-basic", "Run the basic example");
     run_basic_step.dependOn(&run_basic.step);
 
-    const advanced_exe = createExampleExe(b, "example_advanced", "examples/advanced/main.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
-    const run_advanced = b.addRunArtifact(advanced_exe);
-    const run_advanced_step = b.step("run-advanced", "Run the advanced example");
-    run_advanced_step.dependOn(&run_advanced.step);
-
-    const circle_vs_rect_exe = createExampleExe(b, "circle_vs_rect", "tests/rectvscircle.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
-    const run_circle_vs_rect = b.addRunArtifact(circle_vs_rect_exe);
-    const run_circle_vs_rect_step = b.step("run-circle-vs-rect", "Run the circle vs rect test");
-    run_circle_vs_rect_step.dependOn(&run_circle_vs_rect.step);
-
-    const kinematic_test_exe = createExampleExe(b, "kinematic_test", "tests/kinematic_test.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
-    const run_kinematic_test = b.addRunArtifact(kinematic_test_exe);
-    const run_kinematic_test_step = b.step("run-kinematic-test", "Run the kinematic body test");
-    run_kinematic_test_step.dependOn(&run_kinematic_test.step);
-
-    const sleep_debug_exe = createExampleExe(b, "sleep_debug", "examples/sleep_debug.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
-    const run_sleep_debug = b.addRunArtifact(sleep_debug_exe);
-    const run_sleep_debug_step = b.step("run-sleep-debug", "Run the sleep system debug test");
-    run_sleep_debug_step.dependOn(&run_sleep_debug.step);
-
-    // const physics_verification_exe = createExampleExe(b, "physics_verification", "examples/physics_verification.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
-    // const run_physics_verification = b.addRunArtifact(physics_verification_exe);
-    // const run_physics_verification_step = b.step("run-physics-tests", "Run the physics verification tests");
-    // run_physics_verification_step.dependOn(&run_physics_verification.step);
+    const camera_exe = createExampleExe(b, "example_camera", "examples/camera_example.zig", lib_mod, raylib, raygui, raylib_artifact, target, optimize, options);
+    const run_camera = b.addRunArtifact(camera_exe);
+    const run_camera_step = b.step("run-camera", "Run the camera example");
+    run_camera_step.dependOn(&run_camera.step);
 }
