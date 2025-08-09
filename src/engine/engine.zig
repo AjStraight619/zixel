@@ -28,6 +28,8 @@ const ContextHashMap = std.HashMap([]const u8, SceneContext, std.hash_map.String
 
 // Input manager storage (generic - can hold any KeybindManager type)
 const InputManagerMap = std.HashMap([]const u8, *anyopaque, std.hash_map.StringContext, std.hash_map.default_max_load_percentage);
+// Body sharing storage for scene transitions
+const BodyShareMap = std.HashMap([]const u8, *Body, std.hash_map.StringContext, std.hash_map.default_max_load_percentage);
 
 pub const Engine = struct {
     alloc: Allocator,
@@ -43,12 +45,38 @@ pub const Engine = struct {
     scene_contexts: ContextHashMap,
     current_scene: ?*Scene = null,
     next_scene_name: ?[]const u8 = null,
-    persistent_bodies: std.ArrayList(Body),
+    persistent_bodies: std.ArrayList(*Body),
 
     // Physics config for creating scene physics worlds
     physics_config: PhysicsConfig,
 
+    // Body sharing for scene transitions ("carry by key" UX)
+    shared_bodies: BodyShareMap,
+
     const Self = @This();
+
+    pub fn createBody(self: *Engine, body: Body) !*Body {
+        const p = try self.alloc.create(Body);
+        p.* = body;
+        return p;
+    }
+
+    pub fn destroyBody(self: *Engine, p: *Body) void {
+        self.alloc.destroy(p);
+    }
+
+    /// Share a body with a key for scene transitions
+    pub fn share(self: *Engine, key: []const u8, body: *Body) !void {
+        try self.shared_bodies.put(key, body);
+    }
+
+    /// Claim a shared body by key (removes it from shared storage)
+    pub fn claim(self: *Engine, key: []const u8) ?*Body {
+        if (self.shared_bodies.fetchRemove(key)) |entry| {
+            return entry.value;
+        }
+        return null;
+    }
 
     pub fn init(alloc: Allocator, config: EngineConfig) Self {
         const window = Window.init(config.window);
@@ -66,8 +94,9 @@ pub const Engine = struct {
             .input_managers = InputManagerMap.init(alloc),
             .scenes = StringHashMap.init(alloc),
             .scene_contexts = ContextHashMap.init(alloc),
-            .persistent_bodies = std.ArrayList(Body).init(alloc),
+            .persistent_bodies = std.ArrayList(*Body).init(alloc),
             .physics_config = config.physics,
+            .shared_bodies = BodyShareMap.init(alloc),
         };
     }
 
@@ -100,6 +129,7 @@ pub const Engine = struct {
         self.scene_contexts.deinit();
         self.persistent_bodies.deinit();
         self.input_managers.deinit();
+        self.shared_bodies.deinit();
 
         // Cleanup engine systems
         self.window.deinit();
@@ -499,7 +529,7 @@ pub const Engine = struct {
         if (self.current_scene) |scene| {
             if (scene.physics_world) |physics_world| {
                 for (self.persistent_bodies.items) |body| {
-                    try physics_world.bodies.append(body);
+                    try physics_world.attach(body);
                 }
                 self.persistent_bodies.clearRetainingCapacity();
             }

@@ -98,12 +98,12 @@ const GameScene = struct {
     pub fn render(self: *GameScene, ctx: *zixel.SceneContext) !void {
         const world = ctx.physics().?;
 
-        for (world.bodies.items) |*body| {
+        for (world.bodies.items) |body| {
             // Highlight the player body in blue, others in red/green
             var color: zixel.rl.Color = undefined;
             if (body.id == self.player_body_id) {
                 color = zixel.rl.Color.blue; // Player is blue
-            } else if (body.*.kind == .dynamic) {
+            } else if (body.kind == .dynamic) {
                 color = zixel.rl.Color.red; // Other dynamic bodies are red
             } else {
                 color = zixel.rl.Color.green; // Static bodies are green

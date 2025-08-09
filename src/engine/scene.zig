@@ -54,6 +54,26 @@ pub const SceneContext = struct {
         return self.engine.getKeybindManager(name, T);
     }
 
+    /// Share a body with a key for scene transitions
+    pub inline fn share(self: *SceneContext, key: []const u8, body: *Body) !void {
+        return self.engine.share(key, body);
+    }
+
+    /// Claim a shared body by key
+    pub inline fn claim(self: *SceneContext, key: []const u8) ?*Body {
+        return self.engine.claim(key);
+    }
+
+    /// Create a body using the engine's allocator
+    pub inline fn createBody(self: *SceneContext, body: Body) !*Body {
+        return self.engine.createBody(body);
+    }
+
+    /// Destroy a body using the engine's allocator
+    pub inline fn destroyBody(self: *SceneContext, body: *Body) void {
+        self.engine.destroyBody(body);
+    }
+
     // Legacy alias for backward compatibility
     pub const getInputManager = getKeybindManager;
 };

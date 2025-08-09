@@ -49,7 +49,7 @@ pub const PhysicsConfig = struct {
 
 pub const PhysicsWorld = struct {
     allocator: std.mem.Allocator,
-    bodies: std.ArrayList(Body),
+    bodies: std.ArrayList(*Body),
     config: PhysicsConfig,
     next_id: usize = 0,
     gravity: Vector2,
@@ -63,7 +63,7 @@ pub const PhysicsWorld = struct {
     pub fn init(alloc: std.mem.Allocator, config: PhysicsConfig) Self {
         return Self{
             .allocator = alloc,
-            .bodies = std.ArrayList(Body).init(alloc),
+            .bodies = std.ArrayList(*Body).init(alloc),
             .config = config,
             .gravity = config.gravity,
         };
@@ -93,7 +93,7 @@ pub const PhysicsWorld = struct {
         }
 
         // Apply gravity and integrate forces (but NOT position yet)
-        for (self.bodies.items) |*body| {
+        for (self.bodies.items) |body| {
             if (body.kind == .dynamic and !body.isSleeping()) {
                 // Apply gravity
                 const gravity_force = Vector2{
@@ -113,7 +113,7 @@ pub const PhysicsWorld = struct {
         self.detectAndResolveCollisions(engine);
 
         // Position integration AFTER collision response
-        for (self.bodies.items) |*body| {
+        for (self.bodies.items) |body| {
             if (body.kind == .dynamic and !body.isSleeping()) {
                 const dyn_body = &body.kind.dynamic;
                 dyn_body.position = dyn_body.position.add(dyn_body.velocity.scale(dt));
@@ -127,11 +127,11 @@ pub const PhysicsWorld = struct {
     fn detectAndResolveCollisions(self: *Self, engine: *Engine) void {
         var i: usize = 0;
         while (i < self.bodies.items.len) : (i += 1) {
-            var body1_ptr = &self.bodies.items[i];
+            var body1_ptr = self.bodies.items[i];
 
             var j: usize = i + 1;
             while (j < self.bodies.items.len) : (j += 1) {
-                var body2_ptr = &self.bodies.items[j];
+                var body2_ptr = self.bodies.items[j];
 
                 // Skip collision between two static bodies
                 if (body1_ptr.kind != .dynamic and body2_ptr.kind != .dynamic) {
@@ -197,7 +197,7 @@ pub const PhysicsWorld = struct {
     }
 
     fn updateSleepingBodies(self: *Self, dt: f32) void {
-        for (self.bodies.items) |*body| {
+        for (self.bodies.items) |body| {
             if (body.kind == .dynamic and !body.isSleeping()) {
                 const dyn_body = &body.kind.dynamic;
                 const velocity_mag = @sqrt(dyn_body.velocity.x * dyn_body.velocity.x +
@@ -228,22 +228,55 @@ pub const PhysicsWorld = struct {
         return self.step_count;
     }
 
+    pub fn attach(self: *Self, b: *Body) !void {
+        try self.bodies.append(b);
+    }
+
+    pub fn detach(self: *Self, b: *Body) void {
+        for (self.bodies.items, 0..) |body, i| {
+            if (body == b) {
+                _ = self.bodies.swapRemove(i);
+                return;
+            }
+        }
+    }
+
+    pub fn has(self: *Self, b: *Body) bool {
+        for (self.bodies.items) |body| {
+            if (body == b) return true;
+        }
+        return false;
+    }
+
+    // Legacy compatibility methods
     pub fn addBody(self: *Self, body: Body) !usize {
-        try self.bodies.append(body);
-        const id = self.bodies.items.len - 1;
-        self.bodies.items[id].id = id;
-        return id;
+        const body_ptr = try self.allocator.create(Body);
+        body_ptr.* = body;
+        body_ptr.id = self.next_id;
+        self.next_id += 1;
+        try self.bodies.append(body_ptr);
+        return body_ptr.id;
     }
 
     pub fn getBodyById(self: *Self, id: usize) ?*Body {
-        if (id < self.bodies.items.len) {
-            return &self.bodies.items[id];
+        for (self.bodies.items) |body| {
+            if (body.id == id) return body;
         }
         return null;
     }
 
+    // Helper to get body by pointer for old interface
+    pub fn getBody(self: *Self, id: usize) ?*Body {
+        return self.getBodyById(id);
+    }
+
     pub fn removeBody(self: *Self, index: usize) void {
-        self.bodies.swapRemove(index);
+        // For legacy compatibility, find by index in array
+        if (index < self.bodies.items.len) {
+            const body = self.bodies.items[index];
+            self.allocator.destroy(body);
+            _ = self.bodies.swapRemove(index);
+        }
     }
 
     pub fn getBodyCount(self: *Self) usize {
@@ -267,7 +300,7 @@ pub const PhysicsWorld = struct {
 
     /// Render AABBs (bounding boxes) for all bodies
     fn renderAABBs(self: *Self) void {
-        for (self.bodies.items) |*body| {
+        for (self.bodies.items) |body| {
             const aabb = body.aabb();
             const width = aabb.max.x - aabb.min.x;
             const height = aabb.max.y - aabb.min.y;
@@ -288,11 +321,11 @@ pub const PhysicsWorld = struct {
         // For now, let's re-detect collisions just for rendering
         var i: usize = 0;
         while (i < self.bodies.items.len) : (i += 1) {
-            var body1_ptr = &self.bodies.items[i];
+            var body1_ptr = self.bodies.items[i];
 
             var j: usize = i + 1;
             while (j < self.bodies.items.len) : (j += 1) {
-                var body2_ptr = &self.bodies.items[j];
+                var body2_ptr = self.bodies.items[j];
 
                 // Skip collision between two static bodies
                 if (body1_ptr.kind != .dynamic and body2_ptr.kind != .dynamic) {

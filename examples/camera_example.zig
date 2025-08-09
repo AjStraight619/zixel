@@ -159,7 +159,7 @@ const GameScene = struct {
 
             // Draw all physics bodies
             const physics = ctx.physics().?;
-            for (physics.bodies.items) |*body| {
+            for (physics.bodies.items) |body| {
                 const color = if (body.id == self.player_body_id)
                     zixel.Color.blue
                 else if (body.kind == .dynamic)
@@ -249,7 +249,7 @@ const MenuScene = struct {
     pub fn render(self: *MenuScene, ctx: *zixel.SceneContext) !void {
         // Draw floating physics objects (demonstrating zero gravity)
         if (ctx.physics()) |physics| {
-            for (physics.bodies.items) |*body| {
+            for (physics.bodies.items) |body| {
                 body.draw(zixel.Color.blue); // Draw floating objects in blue
             }
         }
