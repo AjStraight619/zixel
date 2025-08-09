@@ -19,8 +19,12 @@ var global_config = LogConfig{};
 
 // Initialize from environment variables if available
 pub fn initFromEnv() void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     // Check for ZIXEL_LOG_LEVEL environment variable
-    if (std.posix.getenv("ZIXEL_LOG_LEVEL")) |level_str| {
+    if (std.process.getEnvVarOwned(allocator, "ZIXEL_LOG_LEVEL")) |level_str| {
         if (std.mem.eql(u8, level_str, "debug")) {
             setAllLogLevels(.debug);
         } else if (std.mem.eql(u8, level_str, "info")) {
@@ -30,19 +34,25 @@ pub fn initFromEnv() void {
         } else if (std.mem.eql(u8, level_str, "err")) {
             setAllLogLevels(.err);
         }
+    } else |_| {
+        // Environment variable not found or error, continue with defaults
     }
 
     // Check for specific subsystem overrides
-    if (std.posix.getenv("ZIXEL_PHYSICS_LOG")) |level_str| {
+    if (std.process.getEnvVarOwned(allocator, "ZIXEL_PHYSICS_LOG")) |level_str| {
         if (parseLogLevel(level_str)) |level| {
             setLogLevel("physics", level);
         }
+    } else |_| {
+        // Environment variable not found or error, continue
     }
 
-    if (std.posix.getenv("ZIXEL_ASSETS_LOG")) |level_str| {
+    if (std.process.getEnvVarOwned(allocator, "ZIXEL_ASSETS_LOG")) |level_str| {
         if (parseLogLevel(level_str)) |level| {
             setLogLevel("assets", level);
         }
+    } else |_| {
+        // Environment variable not found or error, continue
     }
 }
 
