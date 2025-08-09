@@ -62,6 +62,65 @@ pub const Engine = struct {
 
     const Self = @This();
 
+    pub fn init(alloc: Allocator, config: EngineConfig) Self {
+        const window = Window.init(config.window);
+        const assets = Assets.init(alloc, config.assets_base_path);
+        const gui = GUIManager.init(alloc, &window);
+
+        rl.setTargetFPS(@intCast(config.target_fps));
+
+        return Self{
+            .alloc = alloc,
+            .window = window,
+            .target_fps = config.target_fps,
+            .assets = assets,
+            .gui = gui,
+            .input_managers = InputManagerMap.init(alloc),
+            .scenes = StringHashMap.init(alloc),
+            .scene_contexts = ContextHashMap.init(alloc),
+            .persistent_bodies = std.ArrayList(*Body).init(alloc),
+            .physics_config = config.physics,
+            .shared_bodies = BodyShareMap.init(alloc),
+            .entities = EntityMap.init(alloc),
+        };
+    }
+    pub fn deinit(self: *Self) void {
+        // Deinit current scene
+        if (self.current_scene) |scene| {
+            scene.deinit(scene.context);
+        }
+
+        // Cleanup all scenes and their physics worlds
+        var scene_iter = self.scenes.iterator();
+        while (scene_iter.next()) |entry| {
+            const scene = entry.value_ptr.*;
+            if (scene.physics_world) |physics_world| {
+                physics_world.deinit();
+                self.alloc.destroy(physics_world);
+            }
+            if (scene.camera) |camera| {
+                self.alloc.destroy(camera);
+            }
+            // Clean up scene instance (user_data) using the type-specific cleanup function
+            if (self.scene_contexts.get(entry.key_ptr.*)) |context| {
+                scene.cleanup_scene_instance(self.alloc, context.user_data);
+            }
+            self.alloc.destroy(scene);
+        }
+
+        // Cleanup scene management
+        self.scenes.deinit();
+        self.scene_contexts.deinit();
+        self.persistent_bodies.deinit();
+        self.input_managers.deinit();
+        self.shared_bodies.deinit();
+        self.entities.deinit();
+
+        // Cleanup engine systems
+        self.window.deinit();
+        self.gui.deinit();
+    }
+
     pub fn createBody(self: *Engine, body: Body) !*Body {
         const p = try self.alloc.create(Body);
         p.* = body;
@@ -213,66 +272,6 @@ pub const Engine = struct {
                 }
             }
         }
-    }
-
-    pub fn init(alloc: Allocator, config: EngineConfig) Self {
-        const window = Window.init(config.window);
-        const assets = Assets.init(alloc, config.assets_base_path);
-        const gui = GUIManager.init(alloc, &window);
-
-        rl.setTargetFPS(@intCast(config.target_fps));
-
-        return Self{
-            .alloc = alloc,
-            .window = window,
-            .target_fps = config.target_fps,
-            .assets = assets,
-            .gui = gui,
-            .input_managers = InputManagerMap.init(alloc),
-            .scenes = StringHashMap.init(alloc),
-            .scene_contexts = ContextHashMap.init(alloc),
-            .persistent_bodies = std.ArrayList(*Body).init(alloc),
-            .physics_config = config.physics,
-            .shared_bodies = BodyShareMap.init(alloc),
-            .entities = EntityMap.init(alloc),
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        // Deinit current scene
-        if (self.current_scene) |scene| {
-            scene.deinit(scene.context);
-        }
-
-        // Cleanup all scenes and their physics worlds
-        var scene_iter = self.scenes.iterator();
-        while (scene_iter.next()) |entry| {
-            const scene = entry.value_ptr.*;
-            if (scene.physics_world) |physics_world| {
-                physics_world.deinit();
-                self.alloc.destroy(physics_world);
-            }
-            if (scene.camera) |camera| {
-                self.alloc.destroy(camera);
-            }
-            // Clean up scene instance (user_data) using the type-specific cleanup function
-            if (self.scene_contexts.get(entry.key_ptr.*)) |context| {
-                scene.cleanup_scene_instance(self.alloc, context.user_data);
-            }
-            self.alloc.destroy(scene);
-        }
-
-        // Cleanup scene management
-        self.scenes.deinit();
-        self.scene_contexts.deinit();
-        self.persistent_bodies.deinit();
-        self.input_managers.deinit();
-        self.shared_bodies.deinit();
-        self.entities.deinit();
-
-        // Cleanup engine systems
-        self.window.deinit();
-        self.gui.deinit();
     }
 
     pub fn setTargetFPS(self: *Self, fps: u32) void {
