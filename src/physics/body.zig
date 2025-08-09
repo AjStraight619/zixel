@@ -32,7 +32,6 @@ pub const KinematicBodyOptions = struct {
 
 pub const Body = struct {
     id: usize = 0, // Tracks body and links to scene data/rendering
-    persist: bool = false, // Whether this body survives scene changes
     kind: union(enum) {
         static: StaticBody,
         dynamic: DynamicBody,

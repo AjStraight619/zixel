@@ -220,14 +220,6 @@ pub const PhysicsWorld = struct {
         }
     }
 
-    pub fn getPhysicsTimeStep(self: *const Self) f32 {
-        return self.config.physics_time_step;
-    }
-
-    pub fn getStepCount(self: *const Self) u64 {
-        return self.step_count;
-    }
-
     pub fn attach(self: *Self, b: *Body) !void {
         try self.bodies.append(b);
     }

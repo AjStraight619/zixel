@@ -20,18 +20,6 @@ pub const SceneContext = struct {
         return null;
     }
 
-    pub inline fn assets(self: *SceneContext) *Assets {
-        return &self.engine.assets;
-    }
-
-    pub inline fn gui(self: *SceneContext) *GUIManager {
-        return &self.engine.gui;
-    }
-
-    pub inline fn alloc(self: *SceneContext) Allocator {
-        return self.engine.alloc;
-    }
-
     pub inline fn switchScene(self: *SceneContext, name: []const u8) !void {
         try self.engine.switchToScene(name);
     }
@@ -72,6 +60,16 @@ pub const SceneContext = struct {
     /// Destroy a body using the engine's allocator
     pub inline fn destroyBody(self: *SceneContext, body: *Body) void {
         self.engine.destroyBody(body);
+    }
+
+    /// Create or get an entity by ID (automatic lifecycle management)
+    pub inline fn createEntityWithId(self: *SceneContext, id: []const u8, body: Body) !*Body {
+        return self.engine.createEntityWithId(id, body);
+    }
+
+    /// Get an existing entity by ID
+    pub inline fn getEntity(self: *SceneContext, id: []const u8) ?*Body {
+        return self.engine.getEntity(id);
     }
 
     // Legacy alias for backward compatibility

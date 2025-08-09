@@ -185,8 +185,8 @@ const GameScene = struct {
         if (ctx.camera()) |camera| {
             const target = camera.camera2d.target;
             const zoom = camera.camera2d.zoom;
-            const info_text = std.fmt.allocPrintZ(ctx.alloc(), "Camera: ({d:.1}, {d:.1}) Zoom: {d:.2}", .{ target.x, target.y, zoom }) catch "Camera: ?";
-            defer ctx.alloc().free(info_text);
+            const info_text = std.fmt.allocPrintZ(ctx.engine.alloc, "Camera: ({d:.1}, {d:.1}) Zoom: {d:.2}", .{ target.x, target.y, zoom }) catch "Camera: ?";
+            defer ctx.engine.alloc.free(info_text);
             zixel.rl.drawText(info_text, 10, 60, 14, zixel.Color.dark_gray);
         }
     }
@@ -259,8 +259,8 @@ const MenuScene = struct {
         for (self.menu_items, 0..) |item, i| {
             const y: i32 = @intCast(300 + i * 40);
             const color = if (i == self.selected_item) zixel.Color.red else zixel.Color.black;
-            const item_cstr = std.fmt.allocPrintZ(ctx.alloc(), "{s}", .{item}) catch continue;
-            defer ctx.alloc().free(item_cstr);
+            const item_cstr = std.fmt.allocPrintZ(ctx.engine.alloc, "{s}", .{item}) catch continue;
+            defer ctx.engine.alloc.free(item_cstr);
             zixel.rl.drawText(item_cstr, 300, y, 20, color);
         }
 

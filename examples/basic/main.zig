@@ -127,8 +127,8 @@ const GameScene = struct {
         zixel.rl.drawText("G: Toggle Debug", 10, 115, 16, zixel.Color.dark_gray);
 
         // Show which body is controlled
-        const player_info = std.fmt.allocPrintZ(ctx.alloc(), "Controlling Body ID: {?}", .{self.player_body_id}) catch "Player: ?";
-        defer ctx.alloc().free(player_info);
+        const player_info = std.fmt.allocPrintZ(ctx.engine.alloc, "Controlling Body ID: {?}", .{self.player_body_id}) catch "Player: ?";
+        defer ctx.engine.alloc.free(player_info);
         zixel.rl.drawText(@ptrCast(player_info), 10, 135, 16, zixel.Color.blue);
     }
 };
@@ -166,7 +166,7 @@ pub fn main() !void {
         .window = WindowConfig{
             .width = 1280,
             .height = 720,
-            .title = "Perfect Clean Scene API Demo",
+            .title = "Scene API Demo",
         },
         .physics = .{
             .gravity = Vector2{ .x = 0, .y = 400 },

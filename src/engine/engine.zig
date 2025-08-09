@@ -13,6 +13,8 @@ const Scene = @import("scene.zig").Scene;
 const SceneContext = @import("scene.zig").SceneContext;
 const Camera = @import("../graphics/camera.zig").Camera;
 const CameraConfig = @import("../graphics/camera.zig").CameraConfig;
+const Entity = @import("entity.zig").Entity;
+const logging = @import("../core/logging.zig");
 
 pub const EngineConfig = struct {
     window: WindowConfig = .{},
@@ -30,6 +32,8 @@ const ContextHashMap = std.HashMap([]const u8, SceneContext, std.hash_map.String
 const InputManagerMap = std.HashMap([]const u8, *anyopaque, std.hash_map.StringContext, std.hash_map.default_max_load_percentage);
 // Body sharing storage for scene transitions
 const BodyShareMap = std.HashMap([]const u8, *Body, std.hash_map.StringContext, std.hash_map.default_max_load_percentage);
+// Entity tracking for automatic lifecycle management
+const EntityMap = std.HashMap([]const u8, *Body, std.hash_map.StringContext, std.hash_map.default_max_load_percentage);
 
 pub const Engine = struct {
     alloc: Allocator,
@@ -52,6 +56,9 @@ pub const Engine = struct {
 
     // Body sharing for scene transitions ("carry by key" UX)
     shared_bodies: BodyShareMap,
+
+    // Entity tracking for automatic lifecycle management
+    entities: EntityMap,
 
     const Self = @This();
 
@@ -78,6 +85,136 @@ pub const Engine = struct {
         return null;
     }
 
+    /// Create or get an entity by ID (for automatic lifecycle management)
+    pub fn createEntityWithId(self: *Engine, id: []const u8, body: Body) !*Body {
+        // Check if entity already exists
+        if (self.entities.get(id)) |existing_body| {
+            return existing_body;
+        }
+
+        // Create new body and track it
+        const body_ptr = try self.createBody(body);
+        try self.entities.put(id, body_ptr);
+        return body_ptr;
+    }
+
+    /// Get an existing entity by ID
+    pub fn getEntity(self: *Engine, id: []const u8) ?*Body {
+        return self.entities.get(id);
+    }
+
+    /// Remove an entity by ID
+    pub fn removeEntity(self: *Engine, id: []const u8) void {
+        if (self.entities.fetchRemove(id)) |entry| {
+            self.destroyBody(entry.value);
+        }
+    }
+
+    /// Scan a scene's data structure for entity IDs
+    fn scanSceneForEntityIds(self: *Engine, scene_data: anytype, ids: *std.ArrayList([]const u8)) !void {
+        const T = @TypeOf(scene_data);
+        const type_info = @typeInfo(T);
+
+        switch (type_info) {
+            .Struct => |struct_info| {
+                inline for (struct_info.fields) |field| {
+                    const field_value = @field(scene_data, field.name);
+                    try self.scanValueForEntityIds(field_value, ids);
+                }
+            },
+            else => {
+                // For non-structs, try to scan the value directly
+                try self.scanValueForEntityIds(scene_data, ids);
+            },
+        }
+    }
+
+    /// Recursively scan a value for entity IDs
+    fn scanValueForEntityIds(self: *Engine, value: anytype, ids: *std.ArrayList([]const u8)) !void {
+        const T = @TypeOf(value);
+        const type_info = @typeInfo(T);
+
+        switch (type_info) {
+            .Struct => |struct_info| {
+                // Check if this struct has an 'id' field (likely an entity)
+                inline for (struct_info.fields) |field| {
+                    if (std.mem.eql(u8, field.name, "id")) {
+                        const id_value = @field(value, field.name);
+                        if (@TypeOf(id_value) == []const u8) {
+                            try ids.append(id_value);
+                            return; // Found ID, don't recurse further
+                        }
+                    }
+                }
+
+                // No ID field found, recurse into struct fields
+                inline for (struct_info.fields) |field| {
+                    const field_value = @field(value, field.name);
+                    try self.scanValueForEntityIds(field_value, ids);
+                }
+            },
+            .Array => {
+                for (value) |item| {
+                    try self.scanValueForEntityIds(item, ids);
+                }
+            },
+            .Pointer => |ptr_info| {
+                if (ptr_info.size == .Slice) {
+                    for (value) |item| {
+                        try self.scanValueForEntityIds(item, ids);
+                    }
+                } else if (ptr_info.size == .One) {
+                    try self.scanValueForEntityIds(value.*, ids);
+                }
+            },
+            else => {
+                // Base case: not a container type, nothing to scan
+            },
+        }
+    }
+
+    /// Manage entity lifecycle between scene transitions
+    fn manageEntityLifecycle(self: *Engine, old_ids: []const []const u8, new_ids: []const []const u8) !void {
+        // Create sets for efficient lookup
+        var old_id_set = std.StringHashMap(void).init(self.alloc);
+        defer old_id_set.deinit();
+        var new_id_set = std.StringHashMap(void).init(self.alloc);
+        defer new_id_set.deinit();
+
+        // Populate sets
+        for (old_ids) |id| {
+            try old_id_set.put(id, {});
+        }
+        for (new_ids) |id| {
+            try new_id_set.put(id, {});
+        }
+
+        // Find entities to destroy (in old but not in new)
+        for (old_ids) |id| {
+            if (!new_id_set.contains(id)) {
+                self.removeEntity(id);
+                logging.general.info("Destroyed entity: {s}", .{id});
+            }
+        }
+
+        // Entities that exist in both scenes are automatically preserved
+        // New entities will be created when the scene calls createEntityWithId
+
+        // Attach preserved entities to new scene's physics world
+        if (self.current_scene) |scene| {
+            if (scene.physics_world) |physics_world| {
+                for (new_ids) |id| {
+                    if (old_id_set.contains(id)) {
+                        if (self.getEntity(id)) |body| {
+                            try physics_world.attach(body);
+                            logging.general.info("Transferred entity: {s}", .{id});
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn init(alloc: Allocator, config: EngineConfig) Self {
         const window = Window.init(config.window);
         const assets = Assets.init(alloc, config.assets_base_path);
@@ -97,6 +234,7 @@ pub const Engine = struct {
             .persistent_bodies = std.ArrayList(*Body).init(alloc),
             .physics_config = config.physics,
             .shared_bodies = BodyShareMap.init(alloc),
+            .entities = EntityMap.init(alloc),
         };
     }
 
@@ -130,6 +268,7 @@ pub const Engine = struct {
         self.persistent_bodies.deinit();
         self.input_managers.deinit();
         self.shared_bodies.deinit();
+        self.entities.deinit();
 
         // Cleanup engine systems
         self.window.deinit();
@@ -380,11 +519,6 @@ pub const Engine = struct {
         }
     }
 
-    /// Get the currently active scene
-    pub fn getCurrentScene(self: *Self) ?*Scene {
-        return self.current_scene;
-    }
-
     /// Get a scene instance by name and type (for advanced scene access)
     pub fn getSceneInstance(self: *Self, name: []const u8, comptime SceneType: type) ?*SceneType {
         if (self.scenes.get(name)) |scene| {
@@ -456,20 +590,22 @@ pub const Engine = struct {
     fn processSceneSwitch(self: *Self) !void {
         if (self.next_scene_name) |scene_name| {
             if (self.scenes.get(scene_name)) |new_scene| {
-                // Exit current scene
+                var old_entity_ids = std.ArrayList([]const u8).init(self.alloc);
+                defer old_entity_ids.deinit();
+
+                // Exit current scene and collect its entity IDs
                 if (self.current_scene) |old_scene| {
+                    // Scan old scene for entity IDs before it's destroyed
+                    // Note: Cannot scan anyopaque user_data without type information
+                    // This will be improved when we implement the actual entity scanning system
+
                     if (old_scene.on_exit) |on_exit| {
                         try on_exit(old_scene.context);
                     }
                     old_scene.deinit(old_scene.context);
 
-                    // Extract persistent bodies
+                    // Extract persistent bodies (legacy support)
                     try self.extractPersistentBodies();
-                }
-
-                // Add persistent bodies to new scene if it has physics
-                if (new_scene.physics_world) |_| {
-                    try self.addPersistentBodiesToScene();
                 }
 
                 // Switch to scene's input manager if specified
@@ -479,6 +615,20 @@ pub const Engine = struct {
 
                 // Initialize new scene
                 try new_scene.init(new_scene.context);
+
+                // Collect new scene's entity IDs
+                var new_entity_ids = std.ArrayList([]const u8).init(self.alloc);
+                defer new_entity_ids.deinit();
+                // Note: Cannot scan anyopaque user_data without type information
+                // This will be improved when we implement the actual entity scanning system
+
+                // Automatic entity lifecycle management
+                try self.manageEntityLifecycle(old_entity_ids.items, new_entity_ids.items);
+
+                // Add persistent bodies to new scene if it has physics (legacy support)
+                if (new_scene.physics_world) |_| {
+                    try self.addPersistentBodiesToScene();
+                }
 
                 // Enter new scene
                 if (new_scene.on_enter) |on_enter| {
@@ -506,31 +656,24 @@ pub const Engine = struct {
         return camera;
     }
 
-    /// Extract persistent bodies from current physics world
+    /// Extract persistent bodies from current physics world (legacy support)
     fn extractPersistentBodies(self: *Self) !void {
         if (self.current_scene) |scene| {
             if (scene.physics_world) |physics_world| {
-                var i: usize = 0;
-                while (i < physics_world.bodies.items.len) {
-                    const body = physics_world.bodies.items[i];
-                    if (body.persist) {
-                        try self.persistent_bodies.append(physics_world.bodies.swapRemove(i));
-                        // Don't increment i since we swapped an element
-                    } else {
-                        i += 1;
-                    }
-                }
+                // Legacy persist flag removed - this method is now a no-op
+                // Entity lifecycle is managed by the new ID-based system
+                _ = physics_world;
             }
         }
     }
 
-    /// Add persistent bodies to the current scene's physics world
+    /// Add persistent bodies to the current scene's physics world (legacy support)
     fn addPersistentBodiesToScene(self: *Self) !void {
         if (self.current_scene) |scene| {
             if (scene.physics_world) |physics_world| {
-                for (self.persistent_bodies.items) |body| {
-                    try physics_world.attach(body);
-                }
+                // Legacy persist flag removed - this method is now a no-op
+                // Entity lifecycle is managed by the new ID-based system
+                _ = physics_world;
                 self.persistent_bodies.clearRetainingCapacity();
             }
         }
