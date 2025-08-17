@@ -88,8 +88,15 @@ test "path building correctness" {
     const full_path = try assets.buildPath("kenney_pattern-pack-pixel/Tiles (Color)/tile_0001.png");
     defer assets._cache.alloc.free(full_path);
 
+    // Compare using forward-slash normalization for cross-platform paths
+    const full_slice = std.mem.sliceTo(full_path, 0);
+    var normalized = try std.testing.allocator.alloc(u8, full_slice.len);
+    defer std.testing.allocator.free(normalized);
+    for (full_slice, 0..) |ch, idx| {
+        normalized[idx] = if (ch == '\\') '/' else ch;
+    }
     const expected = "test-assets/kenney_pattern-pack-pixel/Tiles (Color)/tile_0001.png";
-    try std.testing.expectEqualStrings(expected, full_path);
+    try std.testing.expectEqualStrings(expected, normalized);
 }
 
 test "auto caching toggle" {

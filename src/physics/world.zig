@@ -77,7 +77,7 @@ pub const PhysicsWorld = struct {
         self.bodies.deinit();
     }
 
-    pub fn update(self: *Self, engine: *Engine, deltaTime: f32) void {
+    pub fn update(self: *Self, engine: ?*Engine, deltaTime: f32) void {
         // Clamp delta time to prevent spiral of death
         const clamped_dt = @min(deltaTime, self.config.max_delta_time);
         self.accumulated_time += clamped_dt;
@@ -90,7 +90,7 @@ pub const PhysicsWorld = struct {
         }
     }
 
-    fn stepPhysics(self: *Self, engine: *Engine, dt: f32) void {
+    fn stepPhysics(self: *Self, engine: ?*Engine, dt: f32) void {
         // Handle sleeping bodies FIRST - before physics changes velocities
         if (self.config.allow_sleeping) {
             self.updateSleepingBodies(dt);
@@ -128,7 +128,7 @@ pub const PhysicsWorld = struct {
         }
     }
 
-    fn detectAndResolveCollisions(self: *Self, engine: *Engine) void {
+    fn detectAndResolveCollisions(self: *Self, engine: ?*Engine) void {
         var i: usize = 0;
         while (i < self.bodies.items.len) : (i += 1) {
             var body1_ptr = self.bodies.items[i];
@@ -187,11 +187,13 @@ pub const PhysicsWorld = struct {
                         }
 
                         // Call scene-specific collision callback if available
-                        if (engine.current_scene) |scene| {
-                            if (scene.collision_callback) |callback| {
-                                callback(scene.context, body1_ptr, body2_ptr) catch |err| {
-                                    logging.general.err("Error in collision callback: {}\n", .{err});
-                                };
+                        if (engine) |eng| {
+                            if (eng.current_scene) |scene| {
+                                if (scene.collision_callback) |callback| {
+                                    callback(scene.context, body1_ptr, body2_ptr) catch |err| {
+                                        logging.general.err("Error in collision callback: {}\n", .{err});
+                                    };
+                                }
                             }
                         }
                     }
@@ -565,8 +567,8 @@ test "Sleep System Tests" {
 
     // Test 2: Simulate physics for enough time to trigger sleep
     for (0..10) |i| {
-        world.update(0.1); // 0.1 seconds per step
-        std.debug.print("Step {}: awake = {}, velocity = {:.3}\n", .{ i + 1, !body.isSleeping(), body.kind.Dynamic.velocity.x });
+        world.update(null, 0.1); // 0.1 seconds per step
+        std.debug.print("Step {}: awake = {}, velocity = {:.3}\n", .{ i + 1, !body.isSleeping(), body.kind.dynamic.velocity.x });
 
         if (i >= 6) { // After 0.7 seconds, should be asleep
             try testing.expect(body.isSleeping());
@@ -582,8 +584,8 @@ test "Sleep System Tests" {
     // Test 4: Manually put to sleep
     body.putToSleep();
     try testing.expect(body.isSleeping());
-    try testing.expect(body.kind.Dynamic.velocity.x == 0.0);
-    std.debug.print("After putToSleep(): sleeping = {}, velocity = {:.3}\n", .{ body.isSleeping(), body.kind.Dynamic.velocity.x });
+    try testing.expect(body.kind.dynamic.velocity.x == 0.0);
+    std.debug.print("After putToSleep(): sleeping = {}, velocity = {:.3}\n", .{ body.isSleeping(), body.kind.dynamic.velocity.x });
 
     std.debug.print("=== Sleep System Tests Complete ===\n", .{});
 }
@@ -620,21 +622,21 @@ test "Collision Response Tests" {
     const b2 = world.getBody(id2).?;
 
     std.debug.print("Before collision:\n", .{});
-    std.debug.print("  Body1: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b1.getPosition().x, b1.getPosition().y, b1.kind.Dynamic.velocity.x, b1.kind.Dynamic.velocity.y });
-    std.debug.print("  Body2: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b2.getPosition().x, b2.getPosition().y, b2.kind.Dynamic.velocity.x, b2.kind.Dynamic.velocity.y });
+    std.debug.print("  Body1: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b1.getPosition().x, b1.getPosition().y, b1.kind.dynamic.velocity.x, b1.kind.dynamic.velocity.y });
+    std.debug.print("  Body2: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b2.getPosition().x, b2.getPosition().y, b2.kind.dynamic.velocity.x, b2.kind.dynamic.velocity.y });
 
     // Simulate until collision happens
     var collision_detected = false;
     for (0..100) |i| {
-        world.update(0.016); // ~60 FPS
+        world.update(null, 0.016); // ~60 FPS
 
         // Check if bodies have bounced (velocities should reverse)
-        if (b1.kind.Dynamic.velocity.x < 0 and b2.kind.Dynamic.velocity.x > 0) {
+        if (b1.kind.dynamic.velocity.x < 0 and b2.kind.dynamic.velocity.x > 0) {
             collision_detected = true;
             std.debug.print("Collision detected at step {}!\n", .{i + 1});
             std.debug.print("After collision:\n", .{});
-            std.debug.print("  Body1: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b1.getPosition().x, b1.getPosition().y, b1.kind.Dynamic.velocity.x, b1.kind.Dynamic.velocity.y });
-            std.debug.print("  Body2: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b2.getPosition().x, b2.getPosition().y, b2.kind.Dynamic.velocity.x, b2.kind.Dynamic.velocity.y });
+            std.debug.print("  Body1: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b1.getPosition().x, b1.getPosition().y, b1.kind.dynamic.velocity.x, b1.kind.dynamic.velocity.y });
+            std.debug.print("  Body2: pos=({:.1}, {:.1}), vel=({:.1}, {:.1})\n", .{ b2.getPosition().x, b2.getPosition().y, b2.kind.dynamic.velocity.x, b2.kind.dynamic.velocity.y });
             break;
         }
     }
@@ -642,8 +644,8 @@ test "Collision Response Tests" {
     try testing.expect(collision_detected);
 
     // Verify collision response worked (velocities should have reversed)
-    try testing.expect(b1.kind.Dynamic.velocity.x < 0); // Now moving left
-    try testing.expect(b2.kind.Dynamic.velocity.x > 0); // Now moving right
+    try testing.expect(b1.kind.dynamic.velocity.x < 0); // Now moving left
+    try testing.expect(b2.kind.dynamic.velocity.x > 0); // Now moving right
 
     std.debug.print("=== Collision Response Tests Complete ===\n", .{});
 }
@@ -676,7 +678,7 @@ test "Performance and Wake-up Tests" {
 
     // Let them all fall asleep
     for (0..5) |_| {
-        world.update(0.1);
+        world.update(null, 0.1);
     }
 
     // Verify they're all asleep
@@ -699,7 +701,7 @@ test "Performance and Wake-up Tests" {
     // Simulate collision - sleeping body should wake up
     var wake_up_detected = false;
     for (0..100) |i| {
-        world.update(0.016);
+        world.update(null, 0.016);
 
         // Check if first sleeping body woke up
         const first_body = world.getBody(sleeping_bodies[0]).?;
