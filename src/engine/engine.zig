@@ -612,8 +612,11 @@ pub const Engine = struct {
                     try self.switchToInputManager(input_name);
                 }
 
-                // Initialize new scene
-                try new_scene.init(new_scene.context);
+	                // Make the new scene current before init so context accessors resolve correctly
+	                self.current_scene = new_scene;
+
+	                // Initialize new scene
+	                try new_scene.init(new_scene.context);
 
                 // Collect new scene's entity IDs
                 var new_entity_ids = std.ArrayList([]const u8).init(self.alloc);
@@ -634,7 +637,6 @@ pub const Engine = struct {
                     try on_enter(new_scene.context);
                 }
 
-                self.current_scene = new_scene;
                 self.next_scene_name = null;
             }
         }
