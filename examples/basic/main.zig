@@ -88,7 +88,7 @@ const GameScene = struct {
                 body.applyForce(.{ .x = 500, .y = 0 });
             }
             if (self.input_mgr.isActionTapped(.jump)) {
-                body.applyForce(.{ .x = 0, .y = -1000 });
+                body.applyForce(.{ .x = 0, .y = -5000 });
             }
         } else {
             logging.general.warn("Player body {?} not found!", .{self.player_body_id});
@@ -111,10 +111,15 @@ const GameScene = struct {
 
             body.draw(color);
 
-            // Draw a selection ring around the player
+            // Draw a selection ring around the player with a small margin
             if (body.id == self.player_body_id) {
                 const pos = body.getPosition();
-                zixel.rl.drawCircleLinesV(pos, 35, zixel.Color.yellow);
+                const shape = body.getShape();
+                const ring_radius: f32 = switch (shape) {
+                    .circle => |c| c.radius + 4.0,
+                    .rectangle => |r| @max(r.width, r.height) / 2.0 + 4.0,
+                };
+                zixel.rl.drawCircleLinesV(pos, ring_radius, zixel.Color.yellow);
             }
         }
 

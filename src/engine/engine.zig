@@ -295,10 +295,15 @@ pub const Engine = struct {
             const frame_time = rl.getFrameTime();
             accumulator += frame_time;
 
+            // Update scene once per frame (good for input/tap detection)
+            if (self.current_scene) |scene| {
+                try scene.update(scene.context, frame_time);
+            }
+
             // Physics simulation with fixed timestep
             while (accumulator >= physics_dt) {
-                // Update scene physics if scene has physics
                 if (self.current_scene) |scene| {
+                    // Update scene physics if scene has physics
                     if (scene.physics_world) |physics_world| {
                         physics_world.update(self, physics_dt);
                     }
@@ -309,8 +314,6 @@ pub const Engine = struct {
                             camera.update(physics_dt);
                         }
                     }
-
-                    try scene.update(scene.context, physics_dt);
                 }
                 accumulator -= physics_dt;
             }
@@ -612,11 +615,11 @@ pub const Engine = struct {
                     try self.switchToInputManager(input_name);
                 }
 
-	                // Make the new scene current before init so context accessors resolve correctly
-	                self.current_scene = new_scene;
+                // Make the new scene current before init so context accessors resolve correctly
+                self.current_scene = new_scene;
 
-	                // Initialize new scene
-	                try new_scene.init(new_scene.context);
+                // Initialize new scene
+                try new_scene.init(new_scene.context);
 
                 // Collect new scene's entity IDs
                 var new_entity_ids = std.ArrayList([]const u8).init(self.alloc);

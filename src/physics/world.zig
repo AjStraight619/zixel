@@ -70,6 +70,10 @@ pub const PhysicsWorld = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        // Destroy all allocated bodies before deinitializing the list
+        for (self.bodies.items) |body| {
+            self.allocator.destroy(body);
+        }
         self.bodies.deinit();
     }
 
