@@ -1,35 +1,28 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) !void {
-    // Standard target options allow the person running `zig build` to choose
-    // what target to build for.
     const target = b.standardTargetOptions(.{});
-
-    // Standard optimization options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const optimize = b.standardOptimizeOption(.{});
 
-    // sokol-zig dependency (pulled from build.zig.zon)
+    // sokol-zig dependency
     const dep_sokol = b.dependency("sokol", .{
         .target = target,
         .optimize = optimize,
-        // Optional backend overrides:
-        // .gl = true,       // force GL on macOS/Windows
-        // .vulkan = true,   // Vulkan on Linux (experimental)
     });
 
-    // This creates a module, which represents a collection of source files
-    // alongside some compilation options.
+    const mod_sokol = dep_sokol.module("sokol");
+
+    // Main library module
     const mod = b.addModule("zixel_new", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+            .{ .name = "sokol", .module = mod_sokol },
         },
     });
 
-    // Executable that uses both the engine module and sokol.
+    // Main executable
     const exe = b.addExecutable(.{
         .name = "zixel_new",
         .root_module = b.createModule(.{
@@ -38,15 +31,13 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "zixel_new", .module = mod },
-                .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+                .{ .name = "sokol", .module = mod_sokol },
             },
         }),
     });
 
-    // Install the executable into zig-out/
     b.installArtifact(exe);
 
-    // `zig build run`
     const run_step = b.step("run", "Run the app");
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
@@ -56,16 +47,30 @@ pub fn build(b: *std.Build) !void {
         run_cmd.addArgs(args);
     }
 
-    // Tests for the module
-    const mod_tests = b.addTest(.{
-        .root_module = mod,
+    // Sample: render_example
+    const render_example = b.addExecutable(.{
+        .name = "render_example",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("samples/render_example.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zixel_new", .module = mod },
+                .{ .name = "sokol", .module = mod_sokol },
+            },
+        }),
     });
-    const run_mod_tests = b.addRunArtifact(mod_tests);
+    b.installArtifact(render_example);
 
-    // Tests for the exe root module
-    const exe_tests = b.addTest(.{
-        .root_module = exe.root_module,
-    });
+    const run_render_example = b.step("run-render-example", "Run the render example");
+    const run_render_cmd = b.addRunArtifact(render_example);
+    run_render_example.dependOn(&run_render_cmd.step);
+    run_render_cmd.step.dependOn(b.getInstallStep());
+
+    // Tests
+    const mod_tests = b.addTest(.{ .root_module = mod });
+    const run_mod_tests = b.addRunArtifact(mod_tests);
+    const exe_tests = b.addTest(.{ .root_module = exe.root_module });
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
     const test_step = b.step("test", "Run tests");

@@ -68,3 +68,38 @@ pub fn clamp(self: Vec2, min: Vec2, max: Vec2) Vec2 {
         .y = math.clamp(self.y, min.y, max.y),
     };
 }
+
+/// Alias for sub (raylib compatibility)
+pub fn subtract(self: Vec2, other: Vec2) Vec2 {
+    return self.sub(other);
+}
+
+/// Alias for dot (raylib compatibility)
+pub fn dotProduct(self: Vec2, other: Vec2) f32 {
+    return self.dot(other);
+}
+
+/// Squared length (avoids sqrt for comparisons)
+pub fn lengthSqr(self: Vec2) f32 {
+    return self.x * self.x + self.y * self.y;
+}
+
+/// Distance to another vector
+pub fn distance(self: Vec2, other: Vec2) f32 {
+    return self.sub(other).length();
+}
+
+/// Squared distance (avoids sqrt for comparisons)
+pub fn distanceSqr(self: Vec2, other: Vec2) f32 {
+    return self.sub(other).lengthSqr();
+}
+
+/// Negate the vector
+pub fn negate(self: Vec2) Vec2 {
+    return .{ .x = -self.x, .y = -self.y };
+}
+
+/// Perpendicular vector (rotate 90 degrees)
+pub fn perpendicular(self: Vec2) Vec2 {
+    return .{ .x = -self.y, .y = self.x };
+}

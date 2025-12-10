@@ -4,17 +4,12 @@ const sapp = sokol.app;
 
 pub const Window = @This();
 
-cfg: Config = DefaultWindowConfig,
-
-const DefaultWindowConfig = Config{};
-
 pub const Config = struct {
-    width: u32 = 1024,
-    height: u32 = 768,
-    title: []const u8 = "Zixel New",
+    width: i32 = 1024,
+    height: i32 = 768,
+    title: [:0]const u8 = "Zixel",
     fullscreen: bool = false,
-    resizable: bool = true,
-    vsync: bool = true,
-    multisampling: u32 = 0,
-    windowed_aspect_ratio: f32 = 16.0 / 9.0,
+    high_dpi: bool = true,
+    sample_count: i32 = 1,
+    swap_interval: i32 = 1,
 };
