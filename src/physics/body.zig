@@ -21,8 +21,6 @@ pub const BodyOptions = struct {
 
 /// Physics body - all common fields at top level for direct access
 pub const Body = struct {
-    id: usize = 0,
-
     // Common fields - direct access!
     shape: PhysicsShape,
     position: Vec2,

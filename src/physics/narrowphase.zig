@@ -9,16 +9,12 @@ pub const ContactManifold = struct {
     point: Vec2, // Contact point in world space
     normal: Vec2, // Collision normal (pointing from body1 to body2)
     penetration: f32, // How deep the overlap is
-    body1_id: usize, // First body involved
-    body2_id: usize, // Second body involved
 
-    pub fn init(point: Vec2, normal: Vec2, penetration: f32, id1: usize, id2: usize) ContactManifold {
+    pub fn init(point: Vec2, normal: Vec2, penetration: f32) ContactManifold {
         return .{
             .point = point,
             .normal = normal,
             .penetration = penetration,
-            .body1_id = id1,
-            .body2_id = id2,
         };
     }
 };
@@ -85,7 +81,7 @@ pub const NarrowPhase = struct {
     }
 
     /// Separating Axis Theorem (SAT) collision detection for two rectangles
-    fn satRectangleRectangle(rect1: PhysicsShape, pos1: Vec2, rot1: f32, rect2: PhysicsShape, pos2: Vec2, rot2: f32, id1: usize, id2: usize) ?ContactManifold {
+    fn satRectangleRectangle(rect1: PhysicsShape, pos1: Vec2, rot1: f32, rect2: PhysicsShape, pos2: Vec2, rot2: f32) ?ContactManifold {
         const corners1 = getRectangleCorners(rect1.rectangle, pos1, rot1);
         const corners2 = getRectangleCorners(rect2.rectangle, pos2, rot2);
 
@@ -144,11 +140,11 @@ pub const NarrowPhase = struct {
             .y = (pos1.y + pos2.y) / 2.0,
         };
 
-        return ContactManifold.init(contact_point, separation_axis, min_overlap, id1, id2);
+        return ContactManifold.init(contact_point, separation_axis, min_overlap);
     }
 
     /// Separating Axis Theorem (SAT) collision detection for circle vs rotated rectangle
-    fn satCircleRectangle(circle: PhysicsShape, circle_pos: Vec2, rect: PhysicsShape, rect_pos: Vec2, rect_rot: f32, id1: usize, id2: usize) ?ContactManifold {
+    fn satCircleRectangle(circle: PhysicsShape, circle_pos: Vec2, rect: PhysicsShape, rect_pos: Vec2, rect_rot: f32) ?ContactManifold {
         const corners = getRectangleCorners(rect.rectangle, rect_pos, rect_rot);
         const radius = circle.circle.radius;
 
@@ -230,7 +226,7 @@ pub const NarrowPhase = struct {
             separation_axis = separation_axis.negate();
         }
 
-        return ContactManifold.init(closest_point, separation_axis, min_overlap, id1, id2);
+        return ContactManifold.init(closest_point, separation_axis, min_overlap);
     }
 
     /// Check collision between two bodies and return contact manifold if colliding
@@ -239,24 +235,22 @@ pub const NarrowPhase = struct {
             body1.shape,
             body1.position,
             body1.rotation,
-            body1.id,
             body2.shape,
             body2.position,
             body2.rotation,
-            body2.id,
         );
     }
 
     /// Check collision between two shapes with positions and rotations
-    pub fn checkShapesCollision(shape1: PhysicsShape, pos1: Vec2, rot1: f32, id1: usize, shape2: PhysicsShape, pos2: Vec2, rot2: f32, id2: usize) ?ContactManifold {
+    pub fn checkShapesCollision(shape1: PhysicsShape, pos1: Vec2, rot1: f32, shape2: PhysicsShape, pos2: Vec2, rot2: f32) ?ContactManifold {
         switch (shape1) {
             .circle => {
                 switch (shape2) {
                     .circle => {
-                        return checkCircleCircle(shape1, pos1, shape2, pos2, id1, id2);
+                        return checkCircleCircle(shape1, pos1, shape2, pos2);
                     },
                     .rectangle => {
-                        return checkCircleRectangle(shape1, pos1, shape2, pos2, rot2, id1, id2);
+                        return checkCircleRectangle(shape1, pos1, shape2, pos2, rot2);
                     },
                 }
             },
@@ -264,19 +258,17 @@ pub const NarrowPhase = struct {
                 switch (shape2) {
                     .circle => {
                         // Flip the result for circle-rectangle collision
-                        if (checkCircleRectangle(shape2, pos2, shape1, pos1, rot1, id2, id1)) |manifold| {
+                        if (checkCircleRectangle(shape2, pos2, shape1, pos1, rot1)) |manifold| {
                             return ContactManifold.init(
                                 manifold.point,
                                 manifold.normal.negate(), // Flip normal
                                 manifold.penetration,
-                                id1,
-                                id2,
                             );
                         }
                         return null;
                     },
                     .rectangle => {
-                        return checkRectangleRectangle(shape1, pos1, rot1, shape2, pos2, rot2, id1, id2);
+                        return checkRectangleRectangle(shape1, pos1, rot1, shape2, pos2, rot2);
                     },
                 }
             },
@@ -284,7 +276,7 @@ pub const NarrowPhase = struct {
     }
 
     /// Circle vs Circle collision
-    fn checkCircleCircle(circle1: PhysicsShape, pos1: Vec2, circle2: PhysicsShape, pos2: Vec2, id1: usize, id2: usize) ?ContactManifold {
+    fn checkCircleCircle(circle1: PhysicsShape, pos1: Vec2, circle2: PhysicsShape, pos2: Vec2) ?ContactManifold {
         const c1 = circle1.circle;
         const c2 = circle2.circle;
 
@@ -305,8 +297,6 @@ pub const NarrowPhase = struct {
                 pos1,
                 Vec2{ .x = 1.0, .y = 0.0 }, // Arbitrary separation direction
                 radius_sum,
-                id1,
-                id2,
             );
         }
 
@@ -317,16 +307,16 @@ pub const NarrowPhase = struct {
             .y = pos1.y + normal.y * c1.radius,
         };
 
-        return ContactManifold.init(contact_point, normal, penetration, id1, id2);
+        return ContactManifold.init(contact_point, normal, penetration);
     }
 
     /// Circle vs Rectangle collision using SAT
-    fn checkCircleRectangle(circle: PhysicsShape, circle_pos: Vec2, rect: PhysicsShape, rect_pos: Vec2, rect_rot: f32, id1: usize, id2: usize) ?ContactManifold {
-        return satCircleRectangle(circle, circle_pos, rect, rect_pos, rect_rot, id1, id2);
+    fn checkCircleRectangle(circle: PhysicsShape, circle_pos: Vec2, rect: PhysicsShape, rect_pos: Vec2, rect_rot: f32) ?ContactManifold {
+        return satCircleRectangle(circle, circle_pos, rect, rect_pos, rect_rot);
     }
 
     /// Rectangle vs Rectangle collision using SAT
-    fn checkRectangleRectangle(rect1: PhysicsShape, pos1: Vec2, rot1: f32, rect2: PhysicsShape, pos2: Vec2, rot2: f32, id1: usize, id2: usize) ?ContactManifold {
-        return satRectangleRectangle(rect1, pos1, rot1, rect2, pos2, rot2, id1, id2);
+    fn checkRectangleRectangle(rect1: PhysicsShape, pos1: Vec2, rot1: f32, rect2: PhysicsShape, pos2: Vec2, rot2: f32) ?ContactManifold {
+        return satRectangleRectangle(rect1, pos1, rot1, rect2, pos2, rot2);
     }
 };

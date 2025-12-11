@@ -7,6 +7,7 @@ const narrowphase = @import("narrowphase.zig");
 const checkBodiesCollision = narrowphase.NarrowPhase.checkBodiesCollision;
 const ContactManifold = narrowphase.ContactManifold;
 const CollisionResponse = @import("response.zig").CollisionResponse;
+pub const BodyHandle = @import("handle.zig").BodyHandle;
 
 pub const PhysicsConfig = struct {
     // World settings
@@ -45,10 +46,18 @@ const PhysicsConfigError = error{
 
 pub const World = @This();
 
+/// A slot in the body storage array.
+/// Contains the body data plus metadata for generational handle tracking.
+pub const BodySlot = struct {
+    body: Body,
+    generation: u32 = 1,
+    alive: bool = false,
+};
+
 alloc: Allocator,
-bodies: std.ArrayList(Body),
+slots: std.ArrayList(BodySlot),
+free_indices: std.ArrayList(u32),
 cfg: PhysicsConfig,
-next_id: usize = 0,
 
 // Simulation state
 accumulated_time: f32 = 0.0,
@@ -58,13 +67,15 @@ pub fn init(alloc: Allocator, cfg: PhysicsConfig) PhysicsConfigError!World {
     try validateConfig(cfg);
     return .{
         .alloc = alloc,
-        .bodies = .empty,
+        .slots = .empty,
+        .free_indices = .empty,
         .cfg = cfg,
     };
 }
 
 pub fn deinit(self: *World) void {
-    self.bodies.deinit(self.alloc);
+    self.slots.deinit(self.alloc);
+    self.free_indices.deinit(self.alloc);
 }
 
 pub fn update(self: *World, delta_time: f32) void {
@@ -87,7 +98,9 @@ fn stepPhysics(self: *World, dt: f32) void {
     }
 
     // Apply gravity and integrate forces (but NOT position yet)
-    for (self.bodies.items) |*body| {
+    for (self.slots.items) |*slot| {
+        if (!slot.alive) continue;
+        const body = &slot.body;
         if (body.kind == .dynamic and !body.isSleeping()) {
             // Apply gravity
             const gravity_force = Vec2{
@@ -106,7 +119,9 @@ fn stepPhysics(self: *World, dt: f32) void {
     self.detectAndResolveCollisions();
 
     // Position integration AFTER collision response
-    for (self.bodies.items) |*body| {
+    for (self.slots.items) |*slot| {
+        if (!slot.alive) continue;
+        const body = &slot.body;
         if (body.kind == .dynamic and !body.isSleeping()) {
             body.position = body.position.add(body.velocity.scale(dt));
         } else if (body.kind == .kinematic) {
@@ -116,13 +131,17 @@ fn stepPhysics(self: *World, dt: f32) void {
 }
 
 fn detectAndResolveCollisions(self: *World) void {
+    const slots = self.slots.items;
+
     var i: usize = 0;
-    while (i < self.bodies.items.len) : (i += 1) {
-        var body1_ptr = &self.bodies.items[i];
+    while (i < slots.len) : (i += 1) {
+        if (!slots[i].alive) continue;
+        var body1_ptr = &slots[i].body;
 
         var j: usize = i + 1;
-        while (j < self.bodies.items.len) : (j += 1) {
-            var body2_ptr = &self.bodies.items[j];
+        while (j < slots.len) : (j += 1) {
+            if (!slots[j].alive) continue;
+            var body2_ptr = &slots[j].body;
 
             // Skip collision between two static bodies
             if (body1_ptr.kind != .dynamic and body2_ptr.kind != .dynamic) {
@@ -186,7 +205,9 @@ fn detectAndResolveCollisions(self: *World) void {
 }
 
 fn updateSleepingBodies(self: *World, dt: f32) void {
-    for (self.bodies.items) |*body| {
+    for (self.slots.items) |*slot| {
+        if (!slot.alive) continue;
+        const body = &slot.body;
         if (body.kind == .dynamic and !body.isSleeping()) {
             const velocity_mag = @sqrt(body.velocity.x * body.velocity.x +
                 body.velocity.y * body.velocity.y);
@@ -206,46 +227,94 @@ fn updateSleepingBodies(self: *World, dt: f32) void {
     }
 }
 
-/// Add a body to the world and return its ID
-pub fn addBody(self: *World, body: Body) !usize {
-    const id = self.next_id;
-    self.next_id += 1;
-
-    var new_body = body;
-    new_body.id = id;
-
-    try self.bodies.append(self.alloc, new_body);
-    return id;
-}
-
-/// Get a body by ID
-pub fn getBodyById(self: *World, id: usize) ?*Body {
-    for (self.bodies.items) |*body| {
-        if (body.id == id) return body;
+/// Add a body to the world and return a handle to it.
+/// The handle can be used for O(1) lookup and is safe against stale references.
+pub fn addBody(self: *World, body: Body) !BodyHandle {
+    // Try to reuse a free slot first (pop returns optional in Zig 0.14+)
+    if (self.free_indices.pop()) |free_index| {
+        const slot = &self.slots.items[free_index];
+        slot.body = body;
+        slot.alive = true;
+        // Generation was already bumped when slot was freed
+        return BodyHandle{
+            .index = free_index,
+            .generation = slot.generation,
+        };
     }
-    return null;
+
+    // No free slot - allocate a new one
+    const index: u32 = @intCast(self.slots.items.len);
+    try self.slots.append(self.alloc, BodySlot{
+        .body = body,
+        .generation = 1,
+        .alive = true,
+    });
+
+    return BodyHandle{
+        .index = index,
+        .generation = 1,
+    };
 }
 
-/// Remove a body by index
-pub fn removeBody(self: *World, index: usize) void {
-    if (index >= self.bodies.items.len) return;
-    _ = self.bodies.swapRemove(index);
+/// Get a body by handle. Returns null if handle is invalid or stale.
+pub fn getBody(self: *World, handle: BodyHandle) ?*Body {
+    if (handle.index >= self.slots.items.len) return null;
+
+    const slot = &self.slots.items[handle.index];
+    if (!slot.alive or slot.generation != handle.generation) return null;
+
+    return &slot.body;
 }
 
-/// Remove a body by ID
-pub fn removeBodyById(self: *World, id: usize) bool {
-    for (self.bodies.items, 0..) |*body, i| {
-        if (body.id == id) {
-            self.removeBody(i);
-            return true;
+/// Get a body by handle (const version).
+pub fn getBodyConst(self: *const World, handle: BodyHandle) ?*const Body {
+    if (handle.index >= self.slots.items.len) return null;
+
+    const slot = &self.slots.items[handle.index];
+    if (!slot.alive or slot.generation != handle.generation) return null;
+
+    return &slot.body;
+}
+
+/// Remove a body by handle. Returns true if the body was found and removed.
+pub fn removeBody(self: *World, handle: BodyHandle) bool {
+    if (handle.index >= self.slots.items.len) return false;
+
+    const slot = &self.slots.items[handle.index];
+    if (!slot.alive or slot.generation != handle.generation) return false;
+
+    slot.alive = false;
+    // Bump generation so old handles become invalid
+    slot.generation +%= 1;
+    // Add to free list for reuse
+    self.free_indices.append(self.alloc, handle.index) catch {};
+
+    return true;
+}
+
+/// Clear all bodies from the world.
+pub fn clearBodies(self: *World) void {
+    // Mark all slots as dead and bump generations
+    for (self.slots.items) |*slot| {
+        if (slot.alive) {
+            slot.alive = false;
+            slot.generation +%= 1;
         }
     }
-    return false;
+    // Rebuild free list with all indices
+    self.free_indices.clearRetainingCapacity();
+    for (0..self.slots.items.len) |i| {
+        self.free_indices.append(self.alloc, @intCast(i)) catch {};
+    }
 }
 
-/// Clear all bodies from the world
-pub fn clearBodies(self: *World) void {
-    self.bodies.clearAndFree(self.alloc);
+/// Returns the number of alive bodies in the world.
+pub fn bodyCount(self: *const World) usize {
+    var count: usize = 0;
+    for (self.slots.items) |slot| {
+        if (slot.alive) count += 1;
+    }
+    return count;
 }
 
 fn validateConfig(cfg: PhysicsConfig) PhysicsConfigError!void {
@@ -287,8 +356,3 @@ fn validateConfig(cfg: PhysicsConfig) PhysicsConfigError!void {
         return error.NegativeRestitutionClamp;
     }
 }
-
-// test "config_validator" {
-//     const debug_allocator = std.testing.allocator;
-//     try std.testing.expectError(PhysicsConfigError.InvalidTimeStep, World.init(debug_allocator, .{ .physics_time_step = 0 }));
-// }

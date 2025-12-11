@@ -10,6 +10,8 @@ pub const physics = struct {
     pub const World = @import("physics/world.zig");
     pub const Body = @import("physics/body.zig").Body;
     pub const BodyKind = @import("physics/body.zig").BodyKind;
+    pub const BodyOptions = @import("physics/body.zig").BodyOptions;
+    pub const BodyHandle = @import("physics/handle.zig").BodyHandle;
     pub const PhysicsShape = @import("math/shapes.zig").PhysicsShape;
     pub const collision = @import("physics/collision.zig");
 };
@@ -26,4 +28,5 @@ pub const Vec2 = math.Vec2;
 pub const Color = Renderer.Color;
 pub const World = physics.World;
 pub const Body = physics.Body;
+pub const BodyHandle = physics.BodyHandle;
 pub const PhysicsShape = physics.PhysicsShape;
