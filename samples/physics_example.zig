@@ -28,15 +28,15 @@ pub const PhysicsScene = struct {
 
         // Ground
         const ground = try world.addStaticRect(400, 550, 700, 40, .{});
-        try scene.sprites.append(alloc, Sprite.init(ground, wall_color));
+        try scene.sprites.append(alloc, Sprite.fromBody(ground, wall_color));
 
         // Left wall
         const left_wall = try world.addStaticRect(50, 350, 20, 400, .{});
-        try scene.sprites.append(alloc, Sprite.init(left_wall, wall_color));
+        try scene.sprites.append(alloc, Sprite.fromBody(left_wall, wall_color));
 
         // Right wall
         const right_wall = try world.addStaticRect(750, 350, 20, 400, .{});
-        try scene.sprites.append(alloc, Sprite.init(right_wall, wall_color));
+        try scene.sprites.append(alloc, Sprite.fromBody(right_wall, wall_color));
 
         // Falling boxes with different colors and sizes
         const box_colors = [_]Color{
@@ -58,7 +58,7 @@ pub const PhysicsScene = struct {
                 size,
                 .{ .mass = 1.0 + fi * 0.5, .restitution = 0.3, .friction = 0.5 },
             );
-            try scene.sprites.append(alloc, Sprite.init(box, box_colors[i]));
+            try scene.sprites.append(alloc, Sprite.fromBody(box, box_colors[i]));
         }
 
         return scene;
