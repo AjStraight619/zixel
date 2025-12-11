@@ -67,6 +67,26 @@ pub fn build(b: *std.Build) !void {
     run_render_example.dependOn(&run_render_cmd.step);
     run_render_cmd.step.dependOn(b.getInstallStep());
 
+    // Sample: physics_example
+    const physics_example = b.addExecutable(.{
+        .name = "physics_example",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("samples/physics_example.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zixel_new", .module = mod },
+                .{ .name = "sokol", .module = mod_sokol },
+            },
+        }),
+    });
+    b.installArtifact(physics_example);
+
+    const run_physics_example = b.step("run-physics-example", "Run the physics example");
+    const run_physics_cmd = b.addRunArtifact(physics_example);
+    run_physics_example.dependOn(&run_physics_cmd.step);
+    run_physics_cmd.step.dependOn(b.getInstallStep());
+
     // Tests
     const mod_tests = b.addTest(.{ .root_module = mod });
     const run_mod_tests = b.addRunArtifact(mod_tests);
