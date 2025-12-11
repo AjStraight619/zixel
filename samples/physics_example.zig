@@ -61,6 +61,9 @@ pub const PhysicsScene = struct {
             try scene.sprites.append(alloc, Sprite.fromBody(box, box_colors[i]));
         }
 
+        // UI element - not tied to physics (stays fixed on screen)
+        try scene.sprites.append(alloc, Sprite.fromRect(10, 10, 150, 30, Color{ .r = 0, .g = 0, .b = 0, .a = 0.7 }));
+
         return scene;
     }
 
