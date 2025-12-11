@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log;
 const Vec2 = @import("../math/vec2.zig");
 const Body = @import("body.zig").Body;
 const Allocator = std.mem.Allocator;
@@ -32,22 +33,33 @@ pub const PhysicsConfig = struct {
     restitution_clamp_threshold: f32 = 15.0,
 };
 
+const PhysicsConfigError = error{
+    InvalidTimeStep,
+    MaxDeltaTooSmall,
+    MaxDeltaLessThanStep,
+    NegativeSleepThreshold,
+    NegativeSleepVelocity,
+    NegativeBaumgarte,
+    NegativeRestitutionClamp,
+};
+
 pub const World = @This();
 
 alloc: Allocator,
 bodies: std.ArrayList(Body),
-config: PhysicsConfig,
+cfg: PhysicsConfig,
 next_id: usize = 0,
 
 // Simulation state
 accumulated_time: f32 = 0.0,
 step_count: u64 = 0,
 
-pub fn init(alloc: Allocator, config: PhysicsConfig) World {
+pub fn init(alloc: Allocator, cfg: PhysicsConfig) PhysicsConfigError!World {
+    try validateConfig(cfg);
     return .{
         .alloc = alloc,
         .bodies = .empty,
-        .config = config,
+        .cfg = cfg,
     };
 }
 
@@ -57,20 +69,20 @@ pub fn deinit(self: *World) void {
 
 pub fn update(self: *World, delta_time: f32) void {
     // Clamp delta time to prevent spiral of death
-    const clamped_dt = @min(delta_time, self.config.max_delta_time);
+    const clamped_dt = @min(delta_time, self.cfg.max_delta_time);
     self.accumulated_time += clamped_dt;
 
     // Fixed timestep physics simulation
-    while (self.accumulated_time >= self.config.physics_time_step) {
-        self.stepPhysics(self.config.physics_time_step);
-        self.accumulated_time -= self.config.physics_time_step;
+    while (self.accumulated_time >= self.cfg.physics_time_step) {
+        self.stepPhysics(self.cfg.physics_time_step);
+        self.accumulated_time -= self.cfg.physics_time_step;
         self.step_count += 1;
     }
 }
 
 fn stepPhysics(self: *World, dt: f32) void {
     // Handle sleeping bodies FIRST
-    if (self.config.allow_sleeping) {
+    if (self.cfg.allow_sleeping) {
         self.updateSleepingBodies(dt);
     }
 
@@ -79,8 +91,8 @@ fn stepPhysics(self: *World, dt: f32) void {
         if (body.kind == .dynamic and !body.isSleeping()) {
             // Apply gravity
             const gravity_force = Vec2{
-                .x = self.config.gravity.x * body.mass,
-                .y = self.config.gravity.y * body.mass,
+                .x = self.cfg.gravity.x * body.mass,
+                .y = self.cfg.gravity.y * body.mass,
             };
             body.applyForce(gravity_force);
 
@@ -139,7 +151,7 @@ fn detectAndResolveCollisions(self: *World) void {
                         const rel_vel = Vec2{ .x = vel2.x - vel1.x, .y = vel2.y - vel1.y };
                         const vel_along_normal = rel_vel.x * manifold.normal.x + rel_vel.y * manifold.normal.y;
 
-                        if (vel_along_normal < -self.config.sleep_velocity_threshold) {
+                        if (vel_along_normal < -self.cfg.sleep_velocity_threshold) {
                             if (!body1_is_active) body1_ptr.wakeUp();
                             if (!body2_is_active) body2_ptr.wakeUp();
                         }
@@ -160,12 +172,12 @@ fn detectAndResolveCollisions(self: *World) void {
                         restitution2,
                         friction1,
                         friction2,
-                        self.config.restitution_clamp_threshold,
+                        self.cfg.restitution_clamp_threshold,
                     );
 
                     // Position correction to reduce penetration
-                    if (manifold.penetration > self.config.contact_slop) {
-                        CollisionResponse.correctPositions(body1_ptr, body2_ptr, manifold, self.config.baumgarte_factor);
+                    if (manifold.penetration > self.cfg.contact_slop) {
+                        CollisionResponse.correctPositions(body1_ptr, body2_ptr, manifold, self.cfg.baumgarte_factor);
                     }
                 }
             }
@@ -180,11 +192,11 @@ fn updateSleepingBodies(self: *World, dt: f32) void {
                 body.velocity.y * body.velocity.y);
             const angular_velocity_mag = @abs(body.angular_velocity);
 
-            if (velocity_mag < self.config.sleep_velocity_threshold and
-                angular_velocity_mag < self.config.sleep_velocity_threshold)
+            if (velocity_mag < self.cfg.sleep_velocity_threshold and
+                angular_velocity_mag < self.cfg.sleep_velocity_threshold)
             {
                 body.sleep_time += dt;
-                if (body.sleep_time > self.config.sleep_time_threshold) {
+                if (body.sleep_time > self.cfg.sleep_time_threshold) {
                     body.putToSleep();
                 }
             } else {
@@ -235,3 +247,48 @@ pub fn removeBodyById(self: *World, id: usize) bool {
 pub fn clearBodies(self: *World) void {
     self.bodies.clearAndFree(self.alloc);
 }
+
+fn validateConfig(cfg: PhysicsConfig) PhysicsConfigError!void {
+    if (cfg.physics_time_step <= 0) {
+        log.err("physics_time_step must be > 0 (got {})", .{cfg.physics_time_step});
+        return PhysicsConfigError.InvalidTimeStep;
+    }
+
+    if (cfg.max_delta_time <= 0) {
+        log.err("max_delta_time must be > 0 (got {})", .{cfg.max_delta_time});
+        return PhysicsConfigError.MaxDeltaTooSmall;
+    }
+
+    if (cfg.max_delta_time < cfg.physics_time_step) {
+        log.err(
+            "max_delta_time ({}) must be >= physics_time_step ({})",
+            .{ cfg.max_delta_time, cfg.physics_time_step },
+        );
+        return error.MaxDeltaLessThanStep;
+    }
+
+    if (cfg.sleep_time_threshold < 0) {
+        log.err("sleep_time_threshold must be >= 0 (got {})", .{cfg.sleep_time_threshold});
+        return error.NegativeSleepThreshold;
+    }
+
+    if (cfg.sleep_velocity_threshold < 0) {
+        log.err("sleep_velocity_threshold must be >= 0 (got {})", .{cfg.sleep_velocity_threshold});
+        return error.NegativeSleepVelocity;
+    }
+
+    if (cfg.baumgarte_factor < 0) {
+        log.err("baumgarte_factor must be >= 0 (got {})", .{cfg.baumgarte_factor});
+        return error.NegativeBaumgarte;
+    }
+
+    if (cfg.restitution_clamp_threshold < 0) {
+        log.err("restitution_clamp_threshold must be >= 0 (got {})", .{cfg.restitution_clamp_threshold});
+        return error.NegativeRestitutionClamp;
+    }
+}
+
+// test "config_validator" {
+//     const debug_allocator = std.testing.allocator;
+//     try std.testing.expectError(PhysicsConfigError.InvalidTimeStep, World.init(debug_allocator, .{ .physics_time_step = 0 }));
+// }

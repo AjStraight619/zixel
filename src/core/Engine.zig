@@ -3,7 +3,6 @@ const Allocator = std.mem.Allocator;
 const Scene = @import("Scene.zig");
 const Window = @import("Window.zig");
 const Renderer = @import("Renderer.zig");
-const Renderable = @import("Renderable.zig");
 const World = @import("../physics/world.zig");
 const sokol = @import("sokol");
 const sapp = sokol.app;
@@ -19,33 +18,37 @@ pub const Config = struct {
 alloc: Allocator,
 world: World,
 renderer: Renderer,
-renderables: std.ArrayList(Renderable),
+scene: ?Scene = null,
 cfg: Config,
 
 // File-level global for sokol callbacks to access
 var g_engine: ?*Engine = null;
 
-pub fn init(alloc: Allocator, cfg: Config) Engine {
+pub fn init(alloc: Allocator, cfg: Config) !Engine {
     return .{
         .alloc = alloc,
-        .world = World.init(alloc, cfg.physics),
+        .world = try World.init(alloc, cfg.physics),
         .renderer = .{},
-        .renderables = .empty,
+        .scene = null,
         .cfg = cfg,
     };
 }
 
-pub fn deinit(self: *Engine) void {
-    // Clean up all renderables
-    for (self.renderables.items) |r| {
-        r.deinit(self.alloc);
+pub fn setScene(self: *Engine, scene: Scene) void {
+    if (self.scene) |old| {
+        old.deinit(self.alloc);
     }
-    self.renderables.deinit(self.alloc);
+    self.scene = scene;
 }
 
-/// Add a renderable to the engine. It will be rendered automatically each frame.
-pub fn addRenderable(self: *Engine, renderable: Renderable) !void {
-    try self.renderables.append(self.alloc, renderable);
+pub fn deinit(self: *Engine) void {
+    if (self.scene) |s| {
+        s.deinit(self.alloc);
+    }
+    self.scene = null;
+
+    // adjust this to match your World API:
+    self.world.deinit(); // or self.world.deinit(self.alloc);
 }
 
 pub fn run(self: *Engine) void {
@@ -79,9 +82,9 @@ fn onFrame() callconv(.c) void {
 
     engine.renderer.beginFrame();
 
-    // Render all renderables
-    for (engine.renderables.items) |r| {
-        r.render(&engine.world, &engine.renderer);
+    if (engine.scene) |s| {
+        s.update(dt);
+        s.render();
     }
 
     engine.renderer.endFrame();
