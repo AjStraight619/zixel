@@ -1,7 +1,10 @@
 const std = @import("std");
 const log = std.log;
 const Vec2 = @import("../math/vec2.zig");
-const Body = @import("body.zig").Body;
+const body_mod = @import("body.zig");
+const Body = body_mod.Body;
+const BodyOptions = body_mod.BodyOptions;
+const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
 const Allocator = std.mem.Allocator;
 const narrowphase = @import("narrowphase.zig");
 const checkBodiesCollision = narrowphase.NarrowPhase.checkBodiesCollision;
@@ -315,6 +318,40 @@ pub fn bodyCount(self: *const World) usize {
         if (slot.alive) count += 1;
     }
     return count;
+}
+
+// ============================================================================
+// Convenience methods for adding common body types
+// ============================================================================
+
+/// Add a static rectangle body
+pub fn addStaticRect(self: *World, x: f32, y: f32, w: f32, h: f32, opts: BodyOptions) !BodyHandle {
+    return self.addBody(Body.initStatic(PhysicsShape.rect(w, h), Vec2.init(x, y), opts));
+}
+
+/// Add a dynamic rectangle body
+pub fn addDynamicRect(self: *World, x: f32, y: f32, w: f32, h: f32, opts: BodyOptions) !BodyHandle {
+    return self.addBody(Body.initDynamic(PhysicsShape.rect(w, h), Vec2.init(x, y), opts));
+}
+
+/// Add a kinematic rectangle body
+pub fn addKinematicRect(self: *World, x: f32, y: f32, w: f32, h: f32, opts: BodyOptions) !BodyHandle {
+    return self.addBody(Body.initKinematic(PhysicsShape.rect(w, h), Vec2.init(x, y), opts));
+}
+
+/// Add a static circle body
+pub fn addStaticCircle(self: *World, x: f32, y: f32, radius: f32, opts: BodyOptions) !BodyHandle {
+    return self.addBody(Body.initStatic(PhysicsShape.circ(radius), Vec2.init(x, y), opts));
+}
+
+/// Add a dynamic circle body
+pub fn addDynamicCircle(self: *World, x: f32, y: f32, radius: f32, opts: BodyOptions) !BodyHandle {
+    return self.addBody(Body.initDynamic(PhysicsShape.circ(radius), Vec2.init(x, y), opts));
+}
+
+/// Add a kinematic circle body
+pub fn addKinematicCircle(self: *World, x: f32, y: f32, radius: f32, opts: BodyOptions) !BodyHandle {
+    return self.addBody(Body.initKinematic(PhysicsShape.circ(radius), Vec2.init(x, y), opts));
 }
 
 fn validateConfig(cfg: PhysicsConfig) PhysicsConfigError!void {
