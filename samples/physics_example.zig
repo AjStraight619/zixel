@@ -6,22 +6,15 @@ const Scene = zixel.Scene;
 const World = zixel.World;
 const Renderer = zixel.Renderer;
 const Engine = zixel.Engine;
-const BodyHandle = zixel.BodyHandle;
+const Sprite = zixel.Sprite;
 const Vec2 = zixel.Vec2;
 const Color = zixel.Color;
-
-/// A simple sprite that tracks a physics body via its handle.
-/// Dimensions come from the body's shape - no duplication needed.
-const PhysicsSprite = struct {
-    handle: BodyHandle,
-    color: Color,
-};
 
 pub const PhysicsScene = struct {
     alloc: Allocator,
     world: *World,
     renderer: *Renderer,
-    sprites: std.ArrayList(PhysicsSprite),
+    sprites: std.ArrayList(Sprite),
 
     pub fn init(alloc: Allocator, world: *World, renderer: *Renderer) !PhysicsScene {
         var scene = PhysicsScene{
@@ -35,15 +28,15 @@ pub const PhysicsScene = struct {
 
         // Ground
         const ground = try world.addStaticRect(400, 550, 700, 40, .{});
-        try scene.sprites.append(alloc, .{ .handle = ground, .color = wall_color });
+        try scene.sprites.append(alloc, Sprite.init(ground, wall_color));
 
         // Left wall
         const left_wall = try world.addStaticRect(50, 350, 20, 400, .{});
-        try scene.sprites.append(alloc, .{ .handle = left_wall, .color = wall_color });
+        try scene.sprites.append(alloc, Sprite.init(left_wall, wall_color));
 
         // Right wall
         const right_wall = try world.addStaticRect(750, 350, 20, 400, .{});
-        try scene.sprites.append(alloc, .{ .handle = right_wall, .color = wall_color });
+        try scene.sprites.append(alloc, Sprite.init(right_wall, wall_color));
 
         // Falling boxes with different colors and sizes
         const box_colors = [_]Color{
@@ -65,7 +58,7 @@ pub const PhysicsScene = struct {
                 size,
                 .{ .mass = 1.0 + fi * 0.5, .restitution = 0.3, .friction = 0.5 },
             );
-            try scene.sprites.append(alloc, .{ .handle = box, .color = box_colors[i] });
+            try scene.sprites.append(alloc, Sprite.init(box, box_colors[i]));
         }
 
         return scene;
@@ -77,16 +70,8 @@ pub const PhysicsScene = struct {
     }
 
     pub fn render(self: *PhysicsScene) void {
-        const r = self.renderer;
-
-        for (self.sprites.items) |sprite| {
-            if (self.world.getBody(sprite.handle)) |body| {
-                // Get dimensions from the shape itself
-                const s = body.shape.size();
-                const draw_x = body.position.x - s.width / 2;
-                const draw_y = body.position.y - s.height / 2;
-                r.drawRect(draw_x, draw_y, s.width, s.height, sprite.color);
-            }
+        for (self.sprites.items) |*sprite| {
+            sprite.render(self.world, self.renderer);
         }
     }
 

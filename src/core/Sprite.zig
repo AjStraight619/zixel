@@ -1,39 +1,30 @@
 const std = @import("std");
 const World = @import("../physics/world.zig");
+const BodyHandle = World.BodyHandle;
 const Renderer = @import("Renderer.zig");
 const Color = Renderer.Color;
-const Allocator = std.mem.Allocator;
 
-/// Built-in sprite type for rendering colored rectangles.
-/// Users can use this directly without writing custom render code.
+/// A sprite that renders based on a physics body's position.
+/// Dimensions are derived from the body's shape - no duplication.
 pub const Sprite = @This();
 
-x: f32,
-y: f32,
-width: f32,
-height: f32,
+handle: BodyHandle,
 color: Color,
 
-/// Create a new sprite with the given properties.
-pub fn create(alloc: Allocator, x: f32, y: f32, width: f32, height: f32, color: Color) !*Sprite {
-    const sprite = try alloc.create(Sprite);
-    sprite.* = .{
-        .x = x,
-        .y = y,
-        .width = width,
-        .height = height,
+/// Create a sprite linked to a physics body
+pub fn init(handle: BodyHandle, color: Color) Sprite {
+    return .{
+        .handle = handle,
         .color = color,
     };
-    return sprite;
 }
 
-/// Render the sprite. Called automatically by the engine.
-pub fn render(self: *Sprite, world: *World, renderer: *Renderer) void {
-    _ = world;
-    renderer.drawRect(self.x, self.y, self.width, self.height, self.color);
-}
-
-/// Clean up the sprite. Called automatically by the engine.
-pub fn deinit(self: *Sprite, alloc: Allocator) void {
-    alloc.destroy(self);
+/// Render the sprite using the body's position and shape dimensions
+pub fn render(self: *const Sprite, world: *const World, renderer: *Renderer) void {
+    if (world.getBodyConst(self.handle)) |body| {
+        const s = body.shape.size();
+        const draw_x = body.position.x - s.width / 2;
+        const draw_y = body.position.y - s.height / 2;
+        renderer.drawRect(draw_x, draw_y, s.width, s.height, self.color);
+    }
 }
