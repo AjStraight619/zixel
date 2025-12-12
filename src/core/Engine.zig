@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const Scene = @import("Scene.zig");
 const Window = @import("Window.zig");
 const Renderer = @import("Renderer.zig");
+const Input = @import("Input.zig");
 const World = @import("../physics/world.zig");
 const sokol = @import("sokol");
 const sapp = sokol.app;
@@ -17,6 +18,7 @@ pub const Config = struct {
 
 alloc: Allocator,
 world: World,
+input: Input,
 renderer: Renderer,
 scene: ?Scene = null,
 cfg: Config,
@@ -28,6 +30,7 @@ pub fn init(alloc: Allocator, cfg: Config) !Engine {
     return .{
         .alloc = alloc,
         .world = try World.init(alloc, cfg.physics),
+        .input = .{},
         .renderer = .{},
         .scene = null,
         .cfg = cfg,
@@ -57,6 +60,7 @@ pub fn run(self: *Engine) void {
         .init_cb = onInit,
         .frame_cb = onFrame,
         .cleanup_cb = onCleanup,
+        .event_cb = onEvent,
         .width = self.cfg.window.width,
         .height = self.cfg.window.height,
         .window_title = self.cfg.window.title,
@@ -88,6 +92,14 @@ fn onFrame() callconv(.c) void {
     }
 
     engine.renderer.endFrame();
+
+    // Clear per-frame input state (pressed/released)
+    engine.input.endFrame();
+}
+
+fn onEvent(event: [*c]const sapp.Event) callconv(.c) void {
+    const engine = g_engine orelse return;
+    engine.input.handleEvent(event);
 }
 
 fn onCleanup() callconv(.c) void {
