@@ -429,26 +429,26 @@ fn validateConfig(cfg: PhysicsConfig) PhysicsConfigError!void {
             "max_delta_time ({}) must be >= physics_time_step ({})",
             .{ cfg.max_delta_time, cfg.physics_time_step },
         );
-        return error.MaxDeltaLessThanStep;
+        return PhysicsConfigError.MaxDeltaLessThanStep;
     }
 
     if (cfg.sleep_time_threshold < 0) {
         log.err("sleep_time_threshold must be >= 0 (got {})", .{cfg.sleep_time_threshold});
-        return error.NegativeSleepThreshold;
+        return PhysicsConfigError.NegativeSleepThreshold;
     }
 
     if (cfg.sleep_velocity_threshold < 0) {
         log.err("sleep_velocity_threshold must be >= 0 (got {})", .{cfg.sleep_velocity_threshold});
-        return error.NegativeSleepVelocity;
+        return PhysicsConfigError.NegativeSleepVelocity;
     }
 
     if (cfg.baumgarte_factor < 0) {
         log.err("baumgarte_factor must be >= 0 (got {})", .{cfg.baumgarte_factor});
-        return error.NegativeBaumgarte;
+        return PhysicsConfigError.NegativeBaumgarte;
     }
 
     if (cfg.restitution_clamp_threshold < 0) {
         log.err("restitution_clamp_threshold must be >= 0 (got {})", .{cfg.restitution_clamp_threshold});
-        return error.NegativeRestitutionClamp;
+        return PhysicsConfigError.NegativeRestitutionClamp;
     }
 }
