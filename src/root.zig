@@ -1,5 +1,6 @@
 // Core
 pub const Engine = @import("core/Engine.zig");
+pub const Input = @import("core/Input.zig");
 pub const Renderer = @import("core/Renderer.zig");
 pub const Renderable = @import("core/Renderable.zig");
 pub const Scene = @import("core/Scene.zig");
@@ -30,3 +31,5 @@ pub const World = physics.World;
 pub const Body = physics.Body;
 pub const BodyHandle = physics.BodyHandle;
 pub const PhysicsShape = physics.PhysicsShape;
+pub const Key = Input.Key;
+pub const MouseButton = Input.MouseButton;
