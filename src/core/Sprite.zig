@@ -42,12 +42,18 @@ pub fn fromRect(x: f32, y: f32, w: f32, h: f32, color: Color) Sprite {
 /// Render the sprite
 pub fn render(self: *const Sprite, world: *const World, renderer: *Renderer) void {
     if (self.handle) |h| {
-        // Linked to physics body - use body position and shape size
+        // Linked to physics body - render based on shape type
         if (world.getBodyConst(h)) |body| {
-            const s = body.shape.size();
-            const draw_x = body.position.x - s.width / 2;
-            const draw_y = body.position.y - s.height / 2;
-            renderer.drawRect(draw_x, draw_y, s.width, s.height, self.color);
+            switch (body.shape) {
+                .circle => |c| {
+                    // Circle: position is center
+                    renderer.drawCircle(body.position.x, body.position.y, c.radius, self.color);
+                },
+                .rectangle => |r| {
+                    // Rectangle: use rotated rect (handles rotation=0 fine too)
+                    renderer.drawRotatedRect(body.position.x, body.position.y, r.width, r.height, body.rotation, self.color);
+                },
+            }
         }
     } else {
         // Standalone sprite - use own position/size (position is top-left)
