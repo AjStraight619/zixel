@@ -94,6 +94,32 @@ pub fn drawRect(self: *Renderer, x: f32, y: f32, w: f32, h: f32, color: Color) v
     sgl.end();
 }
 
+/// Draw a rotated rectangle (cx, cy = center, rotation in radians)
+pub fn drawRotatedRect(self: *Renderer, cx: f32, cy: f32, w: f32, h: f32, rotation: f32, color: Color) void {
+    _ = self;
+    const hw = w / 2.0;
+    const hh = h / 2.0;
+    const cos_r = @cos(rotation);
+    const sin_r = @sin(rotation);
+
+    // Compute rotated corners relative to center
+    const corners = [4][2]f32{
+        .{ -hw, -hh }, // top-left
+        .{ hw, -hh }, // top-right
+        .{ hw, hh }, // bottom-right
+        .{ -hw, hh }, // bottom-left
+    };
+
+    sgl.beginQuads();
+    sgl.c4f(color.r, color.g, color.b, color.a);
+    for (corners) |corner| {
+        const rx = corner[0] * cos_r - corner[1] * sin_r + cx;
+        const ry = corner[0] * sin_r + corner[1] * cos_r + cy;
+        sgl.v2f(rx, ry);
+    }
+    sgl.end();
+}
+
 pub fn drawRectOutline(self: *Renderer, x: f32, y: f32, w: f32, h: f32, color: Color) void {
     _ = self;
     sgl.beginLineStrip();
@@ -122,5 +148,31 @@ pub fn drawTriangle(self: *Renderer, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32
     sgl.v2f(x1, y1);
     sgl.v2f(x2, y2);
     sgl.v2f(x3, y3);
+    sgl.end();
+}
+
+/// Draw a filled circle using triangles
+pub fn drawCircle(self: *Renderer, cx: f32, cy: f32, radius: f32, color: Color) void {
+    _ = self;
+    const segments: u32 = 24;
+    const pi = std.math.pi;
+    const angle_step = 2.0 * pi / @as(f32, @floatFromInt(segments));
+
+    sgl.beginTriangles();
+    sgl.c4f(color.r, color.g, color.b, color.a);
+
+    // Draw triangle fan manually: center + two edge points per triangle
+    for (0..segments) |i| {
+        const angle1 = @as(f32, @floatFromInt(i)) * angle_step;
+        const angle2 = @as(f32, @floatFromInt(i + 1)) * angle_step;
+
+        // Center
+        sgl.v2f(cx, cy);
+        // Edge point 1
+        sgl.v2f(cx + radius * @cos(angle1), cy + radius * @sin(angle1));
+        // Edge point 2
+        sgl.v2f(cx + radius * @cos(angle2), cy + radius * @sin(angle2));
+    }
+
     sgl.end();
 }
