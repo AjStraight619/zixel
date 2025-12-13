@@ -35,7 +35,7 @@ pub const PhysicsConfig = struct {
     baumgarte_factor: f32 = 0.5, // Position correction strength
 
     // Restitution clamp
-    restitution_clamp_threshold: f32 = 30.0, // Kill bounce below this velocity
+    restitution_clamp_threshold: f32 = 3.0, // Kill bounce below this velocity
 
     // Damping (helps stacks settle and reduces jitter)
     linear_damping: f32 = 0.02, // 2% velocity reduction per step (0 = none, 1 = instant stop)
@@ -122,17 +122,19 @@ fn stepPhysics(self: *World, dt: f32) void {
     // Reset debug stats
     self.debug_stats = .{};
 
-    // Handle sleeping bodies FIRST
+    // Update sleep state first (optional)
     if (self.cfg.allow_sleeping) {
         self.updateSleepingBodies(dt);
     }
 
-    // Apply gravity and integrate velocity
+    // ----------------------------------------------------------------------
+    // 1) Forces -> acceleration -> velocity (dynamics only)
+    // ----------------------------------------------------------------------
     for (self.slots.items) |*slot| {
         if (!slot.alive) continue;
         const body = &slot.body;
 
-        // Count bodies for debug
+        // Debug counts / max velocity
         if (body.kind == .dynamic) {
             if (body.isSleeping()) {
                 self.debug_stats.sleeping_bodies += 1;
@@ -144,47 +146,61 @@ fn stepPhysics(self: *World, dt: f32) void {
         }
 
         if (body.kind == .dynamic and !body.isSleeping()) {
-            // Apply gravity
-            const gravity_force = Vec2{
+            // Gravity as a force (your applyForce divides by mass -> acceleration)
+            body.applyForce(Vec2{
                 .x = self.cfg.gravity.x * body.mass,
                 .y = self.cfg.gravity.y * body.mass,
-            };
-            body.applyForce(gravity_force);
+            });
 
-            // Integrate velocity from forces
+            // Integrate velocity
             body.velocity = body.velocity.add(body.acceleration.scale(dt));
             body.acceleration = Vec2.zero;
         }
     }
 
-    // Position integration FIRST
+    // ----------------------------------------------------------------------
+    // 2) Velocity -> position (dynamics + kinematics)
+    // ----------------------------------------------------------------------
     for (self.slots.items) |*slot| {
         if (!slot.alive) continue;
         const body = &slot.body;
-        if (body.kind == .dynamic and !body.isSleeping()) {
-            body.position = body.position.add(body.velocity.scale(dt));
-        } else if (body.kind == .kinematic) {
-            body.update(dt);
+
+        switch (body.kind) {
+            .dynamic => {
+                if (!body.isSleeping()) {
+                    body.position = body.position.add(body.velocity.scale(dt));
+                }
+            },
+            .kinematic => {
+                body.position = body.position.add(body.velocity.scale(dt));
+            },
+            .static => {},
         }
     }
 
-    // Collision detection and response AFTER position integration
-    // This way position corrections don't get undone by velocity
+    // ----------------------------------------------------------------------
+    // 3) Collisions (positional correction + impulses)
+    // ----------------------------------------------------------------------
     self.detectAndResolveCollisions();
 
-    // Apply linear damping to help stacks settle
+    // ----------------------------------------------------------------------
+    // 4) Damping (dynamics only)
+    // ----------------------------------------------------------------------
     if (self.cfg.linear_damping > 0) {
         const damping = 1.0 - self.cfg.linear_damping;
         for (self.slots.items) |*slot| {
             if (!slot.alive) continue;
             const body = &slot.body;
+
             if (body.kind == .dynamic and !body.isSleeping()) {
                 body.velocity = body.velocity.scale(damping);
             }
         }
     }
 
-    // Debug logging (only every N steps to avoid spam)
+    // ----------------------------------------------------------------------
+    // 5) Debug logging
+    // ----------------------------------------------------------------------
     if (self.cfg.debug_logging and self.step_count % self.cfg.debug_log_interval == 0) {
         log.info("[Physics] step={d} active={d} sleeping={d} collisions={d}/{d} max_pen={d:.2} max_vel={d:.1}", .{
             self.step_count,

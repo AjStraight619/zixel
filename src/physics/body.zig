@@ -82,21 +82,21 @@ pub const Body = struct {
 
     // --- Methods ---
 
-    pub fn update(self: *Body, dt: f32) void {
-        switch (self.kind) {
-            .dynamic => {
-                if (!self.is_sleeping) {
-                    self.velocity = self.velocity.add(self.acceleration.scale(dt));
-                    self.position = self.position.add(self.velocity.scale(dt));
-                    self.acceleration = Vec2.zero;
-                }
-            },
-            .kinematic => {
-                self.position = self.position.add(self.velocity.scale(dt));
-            },
-            .static => {},
-        }
-    }
+    // pub fn update(self: *Body, dt: f32) void {
+    //     switch (self.kind) {
+    //         .dynamic => {
+    //             if (!self.is_sleeping) {
+    //                 self.velocity = self.velocity.add(self.acceleration.scale(dt));
+    //                 self.position = self.position.add(self.velocity.scale(dt));
+    //                 self.acceleration = Vec2.zero;
+    //             }
+    //         },
+    //         .kinematic => {
+    //             self.position = self.position.add(self.velocity.scale(dt));
+    //         },
+    //         .static => {},
+    //     }
+    // }
 
     pub fn applyForce(self: *Body, force: Vec2) void {
         if (self.kind == .dynamic) {
