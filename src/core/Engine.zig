@@ -10,7 +10,6 @@ const sapp = sokol.app;
 const slog = sokol.log;
 
 pub const Engine = @This();
-
 pub const Config = struct {
     window: Window.Config = .{},
     physics: World.PhysicsConfig = .{},
