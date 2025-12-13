@@ -13,6 +13,11 @@ const CollisionResponse = @import("response.zig").CollisionResponse;
 pub const BodyHandle = @import("handle.zig").BodyHandle;
 const SpatialHash = @import("broadphase.zig").SpatialHash;
 
+const Ctx = struct {
+    world: *World,
+    iter: usize,
+};
+
 pub const PhysicsConfig = struct {
     // World settings
     gravity: Vec2 = Vec2{ .x = 0, .y = 980 }, // Positive Y = down (screen coords)
@@ -127,9 +132,6 @@ fn stepPhysics(self: *World, dt: f32) void {
         self.updateSleepingBodies(dt);
     }
 
-    // ----------------------------------------------------------------------
-    // 1) Forces -> acceleration -> velocity (dynamics only)
-    // ----------------------------------------------------------------------
     for (self.slots.items) |*slot| {
         if (!slot.alive) continue;
         const body = &slot.body;
@@ -158,9 +160,6 @@ fn stepPhysics(self: *World, dt: f32) void {
         }
     }
 
-    // ----------------------------------------------------------------------
-    // 2) Velocity -> position (dynamics + kinematics)
-    // ----------------------------------------------------------------------
     for (self.slots.items) |*slot| {
         if (!slot.alive) continue;
         const body = &slot.body;
@@ -178,14 +177,8 @@ fn stepPhysics(self: *World, dt: f32) void {
         }
     }
 
-    // ----------------------------------------------------------------------
-    // 3) Collisions (positional correction + impulses)
-    // ----------------------------------------------------------------------
     self.detectAndResolveCollisions();
 
-    // ----------------------------------------------------------------------
-    // 4) Damping (dynamics only)
-    // ----------------------------------------------------------------------
     if (self.cfg.linear_damping > 0) {
         const damping = 1.0 - self.cfg.linear_damping;
         for (self.slots.items) |*slot| {
@@ -198,9 +191,6 @@ fn stepPhysics(self: *World, dt: f32) void {
         }
     }
 
-    // ----------------------------------------------------------------------
-    // 5) Debug logging
-    // ----------------------------------------------------------------------
     if (self.cfg.debug_logging and self.step_count % self.cfg.debug_log_interval == 0) {
         log.info("[Physics] step={d} active={d} sleeping={d} collisions={d}/{d} max_pen={d:.2} max_vel={d:.1}", .{
             self.step_count,
@@ -215,67 +205,48 @@ fn stepPhysics(self: *World, dt: f32) void {
 }
 
 fn detectAndResolveCollisions(self: *World) void {
-    // Multiple iterations help resolve deep penetrations in stacks
-    for (0..self.cfg.position_iterations) |_| {
-        // Rebuild spatial hash each iteration (positions changed)
+    for (0..self.cfg.position_iterations) |iter| {
         self.spatial_hash.clear();
         for (self.slots.items) |*slot| {
             if (!slot.alive) continue;
             self.spatial_hash.insert(&slot.body);
         }
 
-        // Process collisions using spatial hash - O(n) average
-        self.spatial_hash.forEachPair(self, processCollisionPair);
+        const ctx = Ctx{ .world = self, .iter = iter };
+        self.spatial_hash.forEachPair(ctx, processCollisionPairIter);
     }
 }
 
-fn processCollisionPair(self: *World, body1: *Body, body2: *Body) void {
-    // Skip collision between two static bodies
-    if (body1.kind != .dynamic and body2.kind != .dynamic) {
-        return;
-    }
+fn processCollisionPairIter(ctx: Ctx, body1: *Body, body2: *Body) void {
+    const self = ctx.world;
+
+    if (body1.kind != .dynamic and body2.kind != .dynamic) return;
 
     self.debug_stats.collision_checks += 1;
 
-    // AABB check (spatial hash gives us nearby bodies, but still need precise check)
     const aabb1 = body1.aabb();
     const aabb2 = body2.aabb();
     if (!aabb1.intersects(aabb2)) return;
 
-    // Narrowphase: Detailed collision detection
     if (checkBodiesCollision(body1, body2)) |manifold| {
         self.debug_stats.collisions_found += 1;
         self.debug_stats.max_penetration = @max(self.debug_stats.max_penetration, manifold.penetration);
 
-        // Wake-up logic
-        const body1_is_active = !body1.isSleeping() and body1.kind == .dynamic;
-        const body2_is_active = !body2.isSleeping() and body2.kind == .dynamic;
-
-        if (body1_is_active or body2_is_active) {
-            const vel1 = body1.velocity;
-            const vel2 = body2.velocity;
-            const rel_vel = Vec2{ .x = vel2.x - vel1.x, .y = vel2.y - vel1.y };
-            const vel_along_normal = rel_vel.x * manifold.normal.x + rel_vel.y * manifold.normal.y;
-
-            if (vel_along_normal < -self.cfg.sleep_velocity_threshold) {
-                if (!body1_is_active) body1.wakeUp();
-                if (!body2_is_active) body2.wakeUp();
-            }
+        // Apply velocity impulses ONLY once per step (iter == 0)
+        if (ctx.iter == 0) {
+            CollisionResponse.resolveCollisionWithMaterials(
+                body1,
+                body2,
+                manifold,
+                body1.restitution,
+                body2.restitution,
+                body1.friction,
+                body2.friction,
+                self.cfg.restitution_clamp_threshold,
+            );
         }
 
-        // Resolve collision with combined material properties
-        CollisionResponse.resolveCollisionWithMaterials(
-            body1,
-            body2,
-            manifold,
-            body1.restitution,
-            body2.restitution,
-            body1.friction,
-            body2.friction,
-            self.cfg.restitution_clamp_threshold,
-        );
-
-        // Position correction to reduce penetration
+        // Still do position correction each iteration
         if (manifold.penetration > self.cfg.contact_slop) {
             CollisionResponse.correctPositions(body1, body2, manifold, self.cfg.baumgarte_factor);
         }
