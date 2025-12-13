@@ -9,7 +9,7 @@ const Allocator = std.mem.Allocator;
 const narrowphase = @import("narrowphase.zig");
 const checkBodiesCollision = narrowphase.NarrowPhase.checkBodiesCollision;
 const ContactManifold = narrowphase.ContactManifold;
-const CollisionResponse = @import("response.zig").CollisionResponse;
+const CollisionResponse = @import("response.zig");
 pub const BodyHandle = @import("handle.zig").BodyHandle;
 const SpatialHash = @import("broadphase.zig").SpatialHash;
 
@@ -234,7 +234,7 @@ fn processCollisionPairIter(ctx: Ctx, body1: *Body, body2: *Body) void {
 
         // Apply velocity impulses ONLY once per step (iter == 0)
         if (ctx.iter == 0) {
-            CollisionResponse.resolveCollisionWithMaterials(
+            CollisionResponse.resolveWithMaterials(
                 body1,
                 body2,
                 manifold,
