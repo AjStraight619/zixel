@@ -103,3 +103,9 @@ pub fn negate(self: Vec2) Vec2 {
 pub fn perpendicular(self: Vec2) Vec2 {
     return .{ .x = -self.y, .y = self.x };
 }
+
+/// 2D cross product returning a scalar:
+/// cross(a,b) = a.x*b.y - a.y*b.x
+pub inline fn cross2(self: Vec2, other: Vec2) f32 {
+    return self.x * other.y - self.y * other.x;
+}
