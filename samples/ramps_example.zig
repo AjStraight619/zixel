@@ -167,7 +167,7 @@ pub fn main() !void {
         .physics = .{
             .gravity = Vec2.init(0, 400), // Slightly lighter gravity for rolling
             .debug_logging = true,
-            .linear_damping = 0.02,
+            .linear_damping = 0.002,
             .allow_sleeping = false,
         },
     });

@@ -43,7 +43,7 @@ pub const PhysicsConfig = struct {
     restitution_clamp_threshold: f32 = 3.0, // Kill bounce below this velocity
 
     // Damping (helps stacks settle and reduces jitter)
-    linear_damping: f32 = 0.02, // 2% velocity reduction per step (0 = none, 1 = instant stop)
+    linear_damping: f32 = 0.002, // .2% velocity reduction per step (0 = none, 1 = instant stop)
 
     // Debug
     debug_logging: bool = false,
