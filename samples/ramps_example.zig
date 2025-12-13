@@ -165,7 +165,7 @@ pub fn main() !void {
             .title = "Zixel Ramps - Click: circle, Right-click: box, Space: drop from top, C: clear",
         },
         .physics = .{
-            .gravity = Vec2.init(0, 200), // Slightly lighter gravity for rolling
+            .gravity = Vec2.init(0, 400), // Slightly lighter gravity for rolling
             .debug_logging = true,
             .linear_damping = 0.02,
             .allow_sleeping = false,
