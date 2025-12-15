@@ -1,10 +1,12 @@
 const std = @import("std");
+const time = std.time;
 const Allocator = std.mem.Allocator;
 const Scene = @import("Scene.zig");
 const Window = @import("Window.zig");
 const Renderer = @import("Renderer.zig");
 const Input = @import("Input.zig");
 const World = @import("../physics/world.zig");
+const Time = @import("../core/Time.zig");
 const sokol = @import("sokol");
 const sapp = sokol.app;
 const slog = sokol.log;
@@ -14,6 +16,7 @@ pub const Engine = @This();
 pub const Config = struct {
     window: Window.Config = .{},
     physics: World.PhysicsConfig = .{},
+    time: Time.TimeConfig = .{},
 };
 
 alloc: Allocator,
@@ -22,6 +25,7 @@ input: Input,
 renderer: Renderer,
 scene: ?Scene = null,
 cfg: Config,
+stats: Time.FrameStats = .{},
 
 // File-level global for sokol callbacks to access
 var g_engine: ?*Engine = null;
@@ -72,6 +76,10 @@ pub fn run(self: *Engine) void {
     });
 }
 
+pub fn fps(self: *Engine) f32 {
+    return self.stats.fps;
+}
+
 fn onInit() callconv(.c) void {
     const engine = g_engine orelse return;
     engine.renderer.init();
@@ -79,15 +87,20 @@ fn onInit() callconv(.c) void {
 
 fn onFrame() callconv(.c) void {
     const engine = g_engine orelse return;
-    const dt: f32 = @floatCast(sapp.frameDuration());
+    const raw_dt: f32 = @floatCast(sapp.frameDuration());
+
+    engine.stats.tick(engine.cfg.time, raw_dt);
+
+    // simulated deltatime after
+    const sim_dt: f32 = engine.stats.dt;
 
     // Update physics
-    engine.world.update(dt);
+    engine.world.update(sim_dt);
 
     engine.renderer.beginFrame();
 
     if (engine.scene) |s| {
-        s.update(dt);
+        s.update(sim_dt);
         s.render();
     }
 
