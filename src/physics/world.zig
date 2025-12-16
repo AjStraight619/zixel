@@ -27,7 +27,7 @@ const Ctx = struct {
     iter: usize,
 };
 
-pub const PhysicsConfig = struct {
+pub const Config = struct {
     // World settings
     gravity: Vec2 = Vec2{ .x = 0, .y = 980 }, // Positive Y = down (screen coords)
 
@@ -94,7 +94,7 @@ alloc: Allocator,
 slots: std.ArrayList(BodySlot),
 free_indices: std.ArrayList(u32),
 spatial_hash: SpatialHash,
-cfg: PhysicsConfig,
+cfg: Config,
 
 // Fixed-step accumulator state
 accumulated_time: f32 = 0.0,
@@ -103,7 +103,7 @@ step_count: u64 = 0,
 // Debug
 debug_stats: DebugStats = .{},
 
-pub fn init(alloc: Allocator, cfg: PhysicsConfig) PhysicsConfigError!World {
+pub fn init(alloc: Allocator, cfg: Config) PhysicsConfigError!World {
     try validateConfig(cfg);
     return .{
         .alloc = alloc,
@@ -129,6 +129,13 @@ pub fn update(self: *World, delta_time: f32) void {
         self.stepPhysics(self.cfg.physics_time_step);
         self.accumulated_time -= self.cfg.physics_time_step;
         self.step_count += 1;
+    }
+}
+
+pub fn forEachBodyConst(self: *const World, ctx: anytype, comptime func: anytype) void {
+    for (self.slots.items) |*slot| {
+        if (!slot.alive) continue;
+        func(ctx, &slot.body);
     }
 }
 
@@ -433,7 +440,7 @@ pub fn addKinematicCircle(self: *World, x: f32, y: f32, radius: f32, opts: BodyO
 // Config validation
 // ============================================================================
 
-fn validateConfig(cfg: PhysicsConfig) PhysicsConfigError!void {
+fn validateConfig(cfg: Config) PhysicsConfigError!void {
     if (cfg.physics_time_step <= 0) {
         log.err("physics_time_step must be > 0 (got {})", .{cfg.physics_time_step});
         return PhysicsConfigError.InvalidTimeStep;
