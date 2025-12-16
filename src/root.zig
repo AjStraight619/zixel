@@ -1,10 +1,21 @@
-// Core
-pub const Engine = @import("core/Engine.zig");
-pub const Input = @import("core/Input.zig");
-pub const Renderer = @import("core/Renderer.zig");
-pub const Renderable = @import("core/Renderable.zig");
-pub const Scene = @import("core/Scene.zig");
-pub const Sprite = @import("core/Sprite.zig");
+pub const Engine = @import("engine/Engine.zig");
+pub const Ctx = @import("engine/Ctx.zig").Ctx;
+
+pub const Input = @import("engine/Input.zig");
+pub const Renderer = @import("engine/Renderer.zig");
+pub const Renderable = @import("engine/Renderable.zig");
+pub const Scene = @import("engine/Scene.zig");
+pub const Sprite = @import("engine/Sprite.zig");
+
+// Core (pure libs / algorithms)
+pub const core = struct {
+    pub const nav = struct {
+        pub const Grid = @import("core/nav/Grid.zig");
+        pub const astar = @import("core/nav/astar.zig");
+        // later: pub const Grid = @import("core/nav/Grid.zig");
+        // later: pub const Nav = @import("core/nav/Nav.zig");
+    };
+};
 
 // Physics
 pub const physics = struct {
