@@ -16,7 +16,8 @@ pub const BodyOptions = struct {
     friction: f32 = 0.5,
     velocity: Vec2 = Vec2.zero,
     mass: f32 = 1.0,
-    inertia: f32 = 1.0,
+    /// If null, inertia is auto-calculated from shape and mass
+    inertia: ?f32 = null,
 };
 
 /// Physics body - all common fields at top level for direct access
@@ -67,6 +68,9 @@ pub const Body = struct {
     }
 
     pub fn initDynamic(shape: PhysicsShape, position: Vec2, opts: BodyOptions) Body {
+        // Auto-calculate inertia from shape and mass if not specified
+        const inertia = opts.inertia orelse computeInertia(shape, opts.mass);
+
         return .{
             .kind = .dynamic,
             .shape = shape,
@@ -76,7 +80,17 @@ pub const Body = struct {
             .friction = opts.friction,
             .velocity = opts.velocity,
             .mass = opts.mass,
-            .inertia = opts.inertia,
+            .inertia = inertia,
+        };
+    }
+
+    /// Compute moment of inertia for a shape with given mass
+    /// Rectangle: I = (1/12) * m * (w² + h²)
+    /// Circle:    I = (1/2) * m * r²
+    fn computeInertia(shape: PhysicsShape, mass: f32) f32 {
+        return switch (shape) {
+            .rectangle => |r| (1.0 / 12.0) * mass * (r.width * r.width + r.height * r.height),
+            .circle => |c| 0.5 * mass * c.radius * c.radius,
         };
     }
 
