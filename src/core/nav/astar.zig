@@ -2,6 +2,7 @@ const std = @import("std");
 const math = std.math;
 const Allocator = std.mem.Allocator;
 const Order = std.math.Order;
+const ArrayList = std.ArrayList;
 
 pub const NO_PARENT: u32 = std.math.maxInt(u32);
 
@@ -122,6 +123,7 @@ fn heuristic(a: u32, b: u32, width: u32) f32 {
 }
 
 fn reconstructPath(
+    alloc: Allocator,
     scratch: *const Scratch,
     start: u32,
     goal: u32,
@@ -130,7 +132,7 @@ fn reconstructPath(
     var cur: u32 = goal;
 
     while (true) {
-        out_path.append(cur) catch return false;
+        out_path.append(alloc, cur) catch return false;
         if (cur == start) break;
 
         const p = scratch.parent[cur];
@@ -144,6 +146,7 @@ fn reconstructPath(
 
 /// Grid-based 4-neighbor A* using grid.tryNeighbor4().
 pub fn findPath(
+    alloc: Allocator,
     grid: anytype,
     scratch: *Scratch,
     start: u32,
@@ -170,7 +173,7 @@ pub fn findPath(
     const f0 = heuristic(start, goal, width);
     scratch.open.add(.{ .f = f0, .idx = start }) catch return false;
 
-    while (scratch.open.len > 0) {
+    while (scratch.open.count() > 0) {
         const node = scratch.open.remove();
         const current: u32 = node.idx;
 
@@ -178,7 +181,7 @@ pub fn findPath(
         if (scratch.closed[current]) continue;
 
         if (current == goal) {
-            return reconstructPath(scratch, start, goal, out_path);
+            return reconstructPath(alloc, scratch, start, goal, out_path);
         }
 
         scratch.closed[current] = true;
@@ -186,7 +189,7 @@ pub fn findPath(
         const cur_g = scratch.g_score[current];
 
         // 4-way neighbors via grid helper
-        inline for (0..4) |d_| {
+        for (0..4) |d_| {
             const d: u2 = @intCast(d_);
             const nb = grid.tryNeighbor4(current, d) orelse continue;
 

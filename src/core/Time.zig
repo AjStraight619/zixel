@@ -66,9 +66,11 @@ pub fn beginFrame(self: *Time) void {
     const delta_ticks = stime.diff(ticks_now, self.last_ticks);
     self.last_ticks = ticks_now;
 
-    var dt_raw = stime.sec(delta_ticks);
-    if (dt_raw < 0) dt_raw = 0;
-    if (dt_raw > self.cfg.max_dt) dt_raw = self.cfg.max_dt;
+    var dt_raw64: f64 = stime.sec(delta_ticks);
+    if (dt_raw64 < 0) dt_raw64 = 0;
+    if (dt_raw64 > @as(f64, self.cfg.max_dt)) dt_raw64 = @as(f64, self.cfg.max_dt);
+
+    const dt_raw: f32 = @floatCast(dt_raw64);
     self.dt_raw = dt_raw;
 
     // Apply pause + optional single-step
@@ -84,11 +86,8 @@ pub fn beginFrame(self: *Time) void {
     }
 
     self.time += @as(f64, self.dt);
-
-    // fixed-step accumulator runs on scaled dt
     self.accum += self.dt;
 
-    // FPS smoothing (EMA), lazily initialized
     const fps_inst: f32 = if (dt_raw > 0) 1.0 / dt_raw else 0.0;
     if (!self.fps_initialized) {
         if (fps_inst > 0) {
