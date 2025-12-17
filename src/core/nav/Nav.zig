@@ -45,6 +45,9 @@ const AgentState = struct {
     needs_repath: bool = true,
     repath_cooldown: f32 = 0.0,
 
+    // status flags
+    arrived: bool = false, // true when agent reached goal cell
+
     // tuning
     params: AgentParams = .{},
 };
@@ -158,6 +161,7 @@ pub fn clearTarget(self: *Nav, handle: BodyHandle) void {
     st.target_idx = null;
     st.path.clearRetainingCapacity();
     st.waypoint_i = 0;
+    st.arrived = false;
 }
 
 /// Set goal from world coords (mouse click, AI destination, etc.)
@@ -174,6 +178,7 @@ pub fn setTargetWorld(self: *Nav, handle: BodyHandle, target: Vec2) void {
     st.repath_cooldown = 0.0;
     st.path.clearRetainingCapacity();
     st.waypoint_i = 0;
+    st.arrived = false; // Reset arrived flag for new target
 }
 
 pub fn getPath(self: *const Nav, handle: BodyHandle) ?[]const u32 {
@@ -181,7 +186,27 @@ pub fn getPath(self: *const Nav, handle: BodyHandle) ?[]const u32 {
     return st.path.items;
 }
 
-/// Engine-style: update all registered agents.
+/// Check if agent has arrived at its goal.
+/// User should handle this (e.g., stop velocity, trigger action).
+/// Calling clearTarget() or setTargetWorld() will reset this.
+pub fn hasArrived(self: *const Nav, handle: BodyHandle) bool {
+    const st = self.agents.getPtr(handle) orelse return false;
+    return st.arrived;
+}
+
+/// Check if agent is actively navigating (has a target and hasn't arrived)
+pub fn isNavigating(self: *const Nav, handle: BodyHandle) bool {
+    const st = self.agents.getPtr(handle) orelse return false;
+    return st.target_idx != null and !st.arrived;
+}
+
+/// Check if agent has a target set (may or may not have arrived)
+pub fn hasTarget(self: *const Nav, handle: BodyHandle) bool {
+    const st = self.agents.getPtr(handle) orelse return false;
+    return st.target_idx != null;
+}
+
+/// Update all registered agents.
 pub fn update(self: *Nav, world: *World, dt: f32) void {
     var it = self.agents.iterator();
     while (it.next()) |entry| {
@@ -194,7 +219,15 @@ fn updateOne(self: *Nav, world: *World, handle: BodyHandle, dt: f32) void {
     var st = self.agents.getPtr(handle) orelse return;
     const body = world.getBody(handle) orelse return;
 
-    const goal = st.target_idx orelse return;
+    const goal = st.target_idx orelse return; // No target, nothing to do
+
+    // Check if we've arrived at the goal cell
+    const current_cell = self.worldToIdx(body.position.x, body.position.y);
+    if (current_cell != null and current_cell.? == goal) {
+        // Mark as arrived - user can query this with hasArrived()
+        st.arrived = true;
+        return; // Stop navigating, let user decide what to do
+    }
 
     // cooldown
     if (st.repath_cooldown > 0) st.repath_cooldown -= dt;
@@ -232,19 +265,29 @@ fn updateOne(self: *Nav, world: *World, handle: BodyHandle, dt: f32) void {
 
 fn repathInternal(self: *Nav, pos: Vec2, goal: u32, st: *AgentState) void {
     const start = self.worldToIdx(pos.x, pos.y) orelse {
+        std.log.warn("[Nav.repath] agent pos ({d:.1}, {d:.1}) outside grid!", .{ pos.x, pos.y });
         st.path.clearRetainingCapacity();
         st.waypoint_i = 0;
         st.needs_repath = false;
         return;
     };
 
+    std.log.info("[Nav.repath] start={d} goal={d} start_blocked={} goal_blocked={}", .{
+        start,
+        goal,
+        self.grid.isBlockedIdx(start),
+        self.grid.isBlockedIdx(goal),
+    });
+
     st.path.clearRetainingCapacity();
 
     const ok = Astar.findPath(self.alloc, &self.grid, &self.scratch, start, goal, &st.path);
     if (!ok) {
+        std.log.warn("[Nav.repath] A* FAILED to find path from {d} to {d}", .{ start, goal });
         st.path.clearRetainingCapacity();
         st.waypoint_i = 0;
     } else {
+        std.log.info("[Nav.repath] A* SUCCESS, path len={d}", .{st.path.items.len});
         st.waypoint_i = 0;
     }
 

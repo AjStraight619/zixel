@@ -66,26 +66,38 @@ pub const NavMazeScene = struct {
     pub fn update(self: *NavMazeScene, dt: f32) void {
         // Click to move
         if (self.input.isMousePressed(.left)) {
+            const p = self.input.mousePosition();
+
             if (self.agent) |h| {
-                const p = self.input.mousePosition();
                 self.nav.setTargetWorld(h, Vec2.init(p.x, p.y));
             }
         }
 
         // M: regenerate a new maze
         if (self.input.isKeyPressed(.m)) {
-            // change seed a bit
             const s = self.rng.int(u64);
             var prng = std.Random.DefaultPrng.init(s);
             self.rng = prng.random();
 
-            // IMPORTANT: don't swallow errors silently
             self.rebuildMaze() catch |err| {
                 std.log.err("rebuildMaze failed: {}", .{err});
             };
         }
 
+        // Update navigation
         self.nav.update(self.world, dt);
+
+        // Handle arrival - USER decides what to do!
+        if (self.agent) |h| {
+            if (self.nav.hasArrived(h)) {
+                // Agent reached the goal - stop it
+                if (self.world.getBody(h)) |body| {
+                    body.velocity = Vec2.zero;
+                }
+                // Clear the target so we don't keep checking
+                self.nav.clearTarget(h);
+            }
+        }
     }
 
     pub fn render(self: *NavMazeScene) void {
@@ -119,15 +131,28 @@ pub const NavMazeScene = struct {
         self.sprites.clearRetainingCapacity();
         self.agent = null;
 
+        // Initialize edge arrays if not already done
+        if (self.nav.grid.edges_h == null) {
+            try self.nav.grid.initEdges(self.alloc);
+        } else {
+            // Clear existing edges
+            @memset(self.nav.grid.edges_h.?, false);
+            @memset(self.nav.grid.edges_v.?, false);
+        }
+
+        // Clear cell-based blocking (all cells are walkable in a maze)
+        @memset(self.nav.grid.blocked, false);
+
         try self.buildLevel();
-        self.nav.rebuildBlockedFromWorld(self.world);
+
+        // Maze walls are now marked as edges during buildLevel via markMazeEdges
 
         if (self.agent) |h| {
             _ = self.nav.ensureAgent(h);
             self.nav.setAgentParams(h, .{
-                .speed = 190,
-                .arrive_radius = 10, // slightly bigger to reduce “edge jitter”
-                .repath_period = 0.20,
+                .speed = 150, // Slightly slower for smoother navigation
+                .arrive_radius = 8, // Match agent radius
+                .repath_period = 0.15,
             });
         }
     }
@@ -144,14 +169,18 @@ pub const NavMazeScene = struct {
         // 2) maze walls
         try self.spawnMazeWalls(wall_color);
 
-        // 3) agent start
+        // 3) agent start - use circle to avoid corner catching
         const start = self.cellCenter(0, 0);
-        const agent = try self.world.addDynamicRect(
+        const agent = try self.world.addDynamicCircle(
             start.x,
             start.y,
-            18,
-            18,
-            .{ .mass = 1.0, .friction = 0.2, .restitution = 0.0 },
+            8.0, // Smaller than corridor width (~20)
+            .{
+                .mass = 1.0,
+                .friction = 0.1, // Low friction to slide along walls
+                .restitution = 0.0,
+                // Inertia auto-calculated from shape and mass!
+            },
         );
         self.agent = agent;
         try self.sprites.append(self.alloc, Sprite.fromBody(agent, agent_color));
@@ -223,9 +252,23 @@ pub const NavMazeScene = struct {
                 const c = cells[self.cellIndex(x, y)];
                 const center = self.cellCenter(x, y);
 
-                if (c.n) try self.spawnWallRect(center.x, center.y - w * 0.5, w + t, t, wall_color);
-                if (c.w) try self.spawnWallRect(center.x - w * 0.5, center.y, t, w + t, wall_color);
+                // Spawn visual wall rects AND mark edges for pathfinding
+                if (c.n) {
+                    try self.spawnWallRect(center.x, center.y - w * 0.5, w + t, t, wall_color);
+                    self.nav.grid.setWallNorth(x, y, true);
+                }
+                if (c.w) {
+                    try self.spawnWallRect(center.x - w * 0.5, center.y, t, w + t, wall_color);
+                    self.nav.grid.setWallWest(x, y, true);
+                }
+                if (c.e) {
+                    self.nav.grid.setWallEast(x, y, true);
+                }
+                if (c.s) {
+                    self.nav.grid.setWallSouth(x, y, true);
+                }
 
+                // Spawn visual walls for bottom/right borders
                 if (y + 1 == g.height and c.s) {
                     try self.spawnWallRect(center.x, center.y + w * 0.5, w + t, t, wall_color);
                 }
