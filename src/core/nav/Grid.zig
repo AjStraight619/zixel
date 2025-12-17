@@ -4,8 +4,10 @@ const Allocator = std.mem.Allocator;
 
 /// Scene-owned navigation grid.
 /// Stores only static-ish level data: which cells are blocked.
-/// No A* state lives here.
 pub const Grid = @This();
+
+pub const Point = struct { x: f32, y: f32 }; // world-space
+pub const Cell = struct { x: u32, y: u32 }; // grid-space
 
 width: u32,
 height: u32,
@@ -77,7 +79,7 @@ pub fn setBlockedIdx(self: *Grid, i: u32, v: bool) void {
 }
 
 /// world -> cell
-pub fn worldToCell(self: *const Grid, wx: f32, wy: f32) ?struct { x: u32, y: u32 } {
+pub fn worldToCell(self: *const Grid, wx: f32, wy: f32) ?Cell {
     const fx = (wx - self.origin_x) / self.cell_size;
     const fy = (wy - self.origin_y) / self.cell_size;
     if (fx < 0 or fy < 0) return null;
@@ -88,7 +90,7 @@ pub fn worldToCell(self: *const Grid, wx: f32, wy: f32) ?struct { x: u32, y: u32
     return .{ .x = x, .y = y };
 }
 
-pub fn cellCenter(self: *const Grid, x: u32, y: u32) struct { x: f32, y: f32 } {
+pub fn cellCenter(self: *const Grid, x: u32, y: u32) Point {
     return .{
         .x = self.origin_x + (@as(f32, @floatFromInt(x)) + 0.5) * self.cell_size,
         .y = self.origin_y + (@as(f32, @floatFromInt(y)) + 0.5) * self.cell_size,

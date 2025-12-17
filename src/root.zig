@@ -13,7 +13,7 @@ pub const core = struct {
         pub const Grid = @import("core/nav/Grid.zig");
         pub const astar = @import("core/nav/astar.zig");
         // later: pub const Grid = @import("core/nav/Grid.zig");
-        // later: pub const Nav = @import("core/nav/Nav.zig");
+        pub const Nav = @import("core/nav/Nav.zig");
     };
 };
 
