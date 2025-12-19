@@ -1,6 +1,6 @@
 .{
     .name = .zixel_new,
-    .version = "0.0.0",
+    .version = "0.1.0",
     .fingerprint = 0x9090fe3f9cd9d4d2,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
