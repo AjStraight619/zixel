@@ -1,18 +1,19 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const Time = @import("../core/Time.zig");
+const Time = @import("Time.zig");
 const Scene = @import("Scene.zig");
 const Window = @import("Window.zig");
 const Renderer = @import("Renderer.zig");
 const Input = @import("Input.zig");
 const World = @import("../physics/world.zig");
+pub const Ctx = @import("Ctx.zig").Ctx;
 
 const sokol = @import("sokol");
 const sapp = sokol.app;
 const slog = sokol.log;
 
-pub const Engine = @This();
+const Engine = @This();
 
 pub const Config = struct {
     window: Window.Config = .{},
@@ -45,6 +46,33 @@ pub fn setScene(self: *Engine, scene: Scene) void {
     self.scene = scene;
 }
 
+/// Get context for creating scenes
+pub fn ctx(self: *Engine) Ctx {
+    return .{
+        .alloc = self.alloc,
+        .world = &self.world,
+        .renderer = &self.renderer,
+        .input = &self.input,
+    };
+}
+
+/// Create and set a scene from any type that implements the Scene interface.
+/// The scene type must have: `pub fn init(ctx: Ctx) !T` (or `!*T`)
+/// This allocates the scene and wires it up automatically.
+pub fn createScene(self: *Engine, comptime T: type) !void {
+    const ptr = try self.alloc.create(T);
+    ptr.* = try T.init(self.ctx());
+    self.setScene(Scene.init(ptr));
+}
+
+/// Create and set a scene, passing extra arguments to init.
+/// Scene type must have: `pub fn init(ctx: Ctx, args: ExtraArgs) !T`
+pub fn createSceneWith(self: *Engine, comptime T: type, args: anytype) !void {
+    const ptr = try self.alloc.create(T);
+    ptr.* = try @call(.auto, T.init, .{self.ctx()} ++ args);
+    self.setScene(Scene.init(ptr));
+}
+
 pub fn deinit(self: *Engine) void {
     if (self.scene) |s| s.deinit(self.alloc);
     self.scene = null;
@@ -72,12 +100,8 @@ pub fn run(self: *Engine) void {
     });
 }
 
-// --- user_data plumbing ---
-// NOTE: sokol-zig has used different names across versions.
-// Try `sapp.userdata()` first. If your build says it doesn't exist,
-// change it to `sapp.userData()` (or whatever your binding exposes).
 fn engineFromApp() *Engine {
-    const ud = sapp.userdata().?; // <-- if this name fails, rename it (see note above)
+    const ud = sapp.userdata().?;
     return @ptrCast(@alignCast(ud));
 }
 
@@ -95,7 +119,6 @@ fn onFrame() callconv(.c) void {
 
     // Fixed-step sim loop:
     // - physics runs on fixed dt for stability/determinism
-    // - scene update can also run on fixed dt (your choice)
     while (engine.time.popFixedStep()) {
         const fdt: f32 = engine.time.cfg.fixed_dt;
 

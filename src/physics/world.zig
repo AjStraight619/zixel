@@ -71,7 +71,7 @@ const PhysicsConfigError = error{
     NegativeRestitutionClamp,
 };
 
-pub const World = @This();
+const World = @This();
 
 /// Storage slot for generational handles.
 pub const BodySlot = struct {

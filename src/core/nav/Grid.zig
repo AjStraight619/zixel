@@ -4,7 +4,7 @@ const Allocator = std.mem.Allocator;
 
 /// Scene-owned navigation grid.
 /// Supports both cell-based blocking (obstacles) and edge-based blocking (walls/mazes).
-pub const Grid = @This();
+const Grid = @This();
 
 pub const Point = struct { x: f32, y: f32 }; // world-space
 pub const Cell = struct { x: u32, y: u32 }; // grid-space

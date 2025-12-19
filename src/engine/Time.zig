@@ -2,7 +2,7 @@ const std = @import("std");
 const sokol = @import("sokol");
 const stime = sokol.time;
 
-pub const Time = @This();
+const Time = @This();
 
 pub const Config = struct {
     /// Clamp huge dt spikes (alt-tab / breakpoint).

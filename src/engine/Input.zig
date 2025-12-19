@@ -3,7 +3,7 @@ const sokol = @import("sokol");
 const sapp = sokol.app;
 const Vec2 = @import("../math/vec2.zig");
 
-pub const Input = @This();
+const Input = @This();
 
 pub const MouseButton = enum(u8) {
     left = 0,
