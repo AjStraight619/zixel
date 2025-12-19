@@ -22,9 +22,14 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+<<<<<<< HEAD
     // Build info (available to code as @import("zixel_buildinfo"))
     const buildinfo = b.addOptions();
     buildinfo.addOption([]const u8, "version", projectVersionFromZon());
+=======
+    // Editor is enabled by default in Debug, disabled in Release
+    const enable_editor = b.option(bool, "editor", "Enable built-in editor overlay") orelse (optimize == .Debug);
+>>>>>>> db6c019 (feat(editor): add compile-time optional editor overlay)
 
     // cimgui config (non-docking version)
     const cimgui_conf = cimgui.getConfig(false);
@@ -35,24 +40,58 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    // sokol-zig dependency (with imgui support enabled)
-    const dep_sokol = b.dependency("sokol", .{
+    // We need sokol with imgui for both the main module (when editor enabled)
+    // and always for the standalone editor
+    const dep_sokol_with_imgui = b.dependency("sokol", .{
         .target = target,
         .optimize = optimize,
         .with_sokol_imgui = true,
     });
-    const mod_sokol = dep_sokol.module("sokol");
+    dep_sokol_with_imgui.artifact("sokol_clib").addIncludePath(dep_cimgui.path(cimgui_conf.include_dir));
 
-    // inject the cimgui header search path into the sokol C library compile step
-    dep_sokol.artifact("sokol_clib").addIncludePath(dep_cimgui.path(cimgui_conf.include_dir));
+    const dep_sokol_no_imgui = b.dependency("sokol", .{
+        .target = target,
+        .optimize = optimize,
+        .with_sokol_imgui = false,
+    });
+
+    // Select which sokol to use based on editor flag
+    const mod_sokol = if (enable_editor)
+        dep_sokol_with_imgui.module("sokol")
+    else
+        dep_sokol_no_imgui.module("sokol");
+
+    // Build options module (passed to engine so it knows if editor is enabled)
+    const options = b.addOptions();
+    options.addOption(bool, "enable_editor", enable_editor);
 
     // Main library module
+    var imports: std.ArrayList(std.Build.Module.Import) = .empty;
+    try imports.append(b.allocator, .{ .name = "sokol", .module = mod_sokol });
+    try imports.append(b.allocator, .{ .name = "zixel_options", .module = options.createModule() });
+    if (enable_editor) {
+        try imports.append(b.allocator, .{ .name = "cimgui", .module = dep_cimgui.module(cimgui_conf.module_name) });
+    }
+
     const mod = b.addModule("zixel_new", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = imports.items,
+    });
+
+    // Standalone editor module (always has editor enabled)
+    const editor_options = b.addOptions();
+    editor_options.addOption(bool, "enable_editor", true);
+
+    const mod_editor = b.addModule("zixel_editor", .{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
         .imports = &.{
-            .{ .name = "sokol", .module = mod_sokol },
+            .{ .name = "sokol", .module = dep_sokol_with_imgui.module("sokol") },
+            .{ .name = "zixel_options", .module = editor_options.createModule() },
+            .{ .name = "cimgui", .module = dep_cimgui.module(cimgui_conf.module_name) },
         },
     });
 
@@ -103,7 +142,13 @@ pub fn build(b: *std.Build) !void {
 
     if (b.args) |args| run_cli_cmd.addArgs(args);
 
+<<<<<<< HEAD
     // Editor
+=======
+    // ---------------------------------------------------------------------
+    // Standalone Editor (always has editor enabled)
+    // ---------------------------------------------------------------------
+>>>>>>> db6c019 (feat(editor): add compile-time optional editor overlay)
     const editor_exe = b.addExecutable(.{
         .name = "zixel-editor",
         .root_module = b.createModule(.{
@@ -111,9 +156,8 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "zixel_new", .module = mod },
-                .{ .name = "sokol", .module = mod_sokol },
-                .{ .name = "cimgui", .module = dep_cimgui.module(cimgui_conf.module_name) },
+                .{ .name = "zixel_new", .module = mod_editor },
+                .{ .name = "sokol", .module = dep_sokol_with_imgui.module("sokol") },
             },
         }),
     });

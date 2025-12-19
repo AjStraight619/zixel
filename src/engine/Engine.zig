@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const options = @import("zixel_options");
 
 const Time = @import("Time.zig");
 const Scene = @import("Scene.zig");
@@ -13,7 +14,10 @@ const sokol = @import("sokol");
 const sapp = sokol.app;
 const slog = sokol.log;
 
-const Engine = @This();
+// Conditionally import editor
+const Editor = if (options.enable_editor) @import("../editor/Editor.zig") else void;
+
+pub const Engine = @This();
 
 pub const Config = struct {
     window: Window.Config = .{},
@@ -29,8 +33,11 @@ renderer: Renderer,
 scene: ?Scene = null,
 cfg: Config,
 
+// Editor overlay (only exists when enable_editor is true)
+editor: if (options.enable_editor) Editor else void = if (options.enable_editor) undefined else {},
+
 pub fn init(alloc: Allocator, cfg: Config) !Engine {
-    return .{
+    return Engine{
         .alloc = alloc,
         .world = try World.init(alloc, cfg.physics),
         .time = Time.init(cfg.time),
@@ -38,6 +45,7 @@ pub fn init(alloc: Allocator, cfg: Config) !Engine {
         .renderer = .{},
         .scene = null,
         .cfg = cfg,
+        .editor = if (options.enable_editor) Editor.init(alloc) else {},
     };
 }
 
@@ -77,6 +85,10 @@ pub fn deinit(self: *Engine) void {
     if (self.scene) |s| s.deinit(self.alloc);
     self.scene = null;
 
+    if (options.enable_editor) {
+        self.editor.deinit();
+    }
+
     self.world.deinit();
 }
 
@@ -109,6 +121,12 @@ fn engineFromApp() *Engine {
 fn onInit() callconv(.c) void {
     const engine = engineFromApp();
     engine.renderer.init();
+
+    // Initialize editor overlay and connect to world
+    if (options.enable_editor) {
+        engine.editor.setup();
+        engine.editor.setWorld(&engine.world);
+    }
 }
 
 fn onFrame() callconv(.c) void {
@@ -129,11 +147,22 @@ fn onFrame() callconv(.c) void {
         }
     }
 
+    // Begin editor ImGui frame (before any rendering)
+    if (options.enable_editor) {
+        engine.editor.beginFrame();
+        engine.editor.render();
+    }
+
     // Render once per frame (optionally interpolate using engine.time.alpha())
     engine.renderer.beginFrame();
 
     if (engine.scene) |s| {
         s.render();
+    }
+
+    // Draw editor UI on top of game
+    if (options.enable_editor) {
+        engine.editor.draw();
     }
 
     engine.renderer.endFrame();
@@ -143,6 +172,13 @@ fn onFrame() callconv(.c) void {
 
 fn onEvent(event: [*c]const sapp.Event) callconv(.c) void {
     const engine = engineFromApp();
+
+    // Forward events to editor first (ImGui may want to capture them)
+    if (options.enable_editor) {
+        const handled = engine.editor.handleEvent(event);
+        _ = handled; // Could use this to prevent game input when ImGui wants focus
+    }
+
     engine.input.handleEvent(event);
 }
 
