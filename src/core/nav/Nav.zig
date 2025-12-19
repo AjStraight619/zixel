@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const Grid = @import("Grid.zig").Grid;
+const Grid = @import("Grid.zig");
 const Astar = @import("astar.zig");
 
 const World = @import("../../physics/world.zig");
@@ -10,7 +10,7 @@ const Body = @import("../../physics/body.zig").Body;
 
 const Vec2 = @import("../../math/vec2.zig");
 
-pub const Nav = @This();
+const Nav = @This();
 
 alloc: Allocator,
 

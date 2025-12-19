@@ -1,12 +1,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub const Scene = @This();
+const Scene = @This();
 
 ptr: *anyopaque,
 vtable: *const VTable,
 
 pub const VTable = struct {
+    name: []const u8,
     update: *const fn (ctx: *anyopaque, dt: f32) void,
     render: *const fn (ctx: *anyopaque) void,
     deinit: *const fn (ctx: *anyopaque, alloc: Allocator) void,
@@ -34,6 +35,9 @@ pub fn init(ptr: anytype) Scene {
 
     // Require the type to implement these methods:
     comptime {
+        if (!@hasDecl(T, "name")) {
+            @compileError("Scene type must have `pub const name: []const u8`");
+        }
         if (!@hasDecl(T, "update")) {
             @compileError("Scene type must have pub fn update(self: *T, dt: f32) void");
         }
@@ -70,6 +74,7 @@ fn vtableFor(comptime T: type) *const VTable {
         }
 
         pub const vtable = VTable{
+            .name = T.name,
             .update = v_update,
             .render = v_render,
             .deinit = v_deinit,

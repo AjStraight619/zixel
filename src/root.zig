@@ -12,7 +12,6 @@ pub const core = struct {
     pub const nav = struct {
         pub const Grid = @import("core/nav/Grid.zig");
         pub const astar = @import("core/nav/astar.zig");
-        // later: pub const Grid = @import("core/nav/Grid.zig");
         pub const Nav = @import("core/nav/Nav.zig");
     };
 };
