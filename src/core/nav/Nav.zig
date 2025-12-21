@@ -46,7 +46,7 @@ const AgentState = struct {
     repath_cooldown: f32 = 0.0,
 
     // status flags
-    arrived: bool = false, // true when agent reached goal cell
+    arrived: bool = false, // true when agent reached goal cell center
 
     // tuning
     params: AgentParams = .{},
@@ -221,13 +221,7 @@ fn updateOne(self: *Nav, world: *World, handle: BodyHandle, dt: f32) void {
 
     const goal = st.target_idx orelse return; // No target, nothing to do
 
-    // Check if we've arrived at the goal cell
-    const current_cell = self.worldToIdx(body.position.x, body.position.y);
-    if (current_cell != null and current_cell.? == goal) {
-        // Mark as arrived - user can query this with hasArrived()
-        st.arrived = true;
-        return; // Stop navigating, let user decide what to do
-    }
+    if (st.arrived) return;
 
     // cooldown
     if (st.repath_cooldown > 0) st.repath_cooldown -= dt;
@@ -240,7 +234,16 @@ fn updateOne(self: *Nav, world: *World, handle: BodyHandle, dt: f32) void {
         }
     }
 
-    if (st.path.items.len == 0 or st.waypoint_i >= st.path.items.len) return;
+    if (st.path.items.len == 0 or st.waypoint_i >= st.path.items.len) {
+        // No path or reached end of waypoints - check if we are at final goal center
+        const goal_wp = self.idxToWorldCenter(goal);
+        const gdx = goal_wp.x - body.position.x;
+        const gdy = goal_wp.y - body.position.y;
+        if (gdx * gdx + gdy * gdy <= st.params.arrive_radius * st.params.arrive_radius) {
+            st.arrived = true;
+        }
+        return;
+    }
 
     // Follow waypoint
     const wp_idx = st.path.items[st.waypoint_i];
@@ -253,6 +256,10 @@ fn updateOne(self: *Nav, world: *World, handle: BodyHandle, dt: f32) void {
     const r2 = st.params.arrive_radius * st.params.arrive_radius;
     if (dist2 <= r2) {
         st.waypoint_i += 1;
+        // If this was the last waypoint, we've basically arrived (will be finalized next frame)
+        if (st.waypoint_i >= st.path.items.len) {
+            st.arrived = true;
+        }
         return;
     }
 

@@ -137,6 +137,8 @@ fn onFrame() callconv(.c) void {
 
     // Fixed-step sim loop:
     // - physics runs on fixed dt for stability/determinism
+    // - input is cleared AFTER a fixed step runs, so clicks aren't lost on skip frames
+    var ran_fixed_step = false;
     while (engine.time.popFixedStep()) {
         const fdt: f32 = engine.time.cfg.fixed_dt;
 
@@ -145,6 +147,14 @@ fn onFrame() callconv(.c) void {
         if (engine.scene) |s| {
             s.update(fdt);
         }
+
+        ran_fixed_step = true;
+    }
+
+    // Only clear "pressed/released" input state after a fixed step consumed it
+    // This prevents input loss when frame rate > physics rate
+    if (ran_fixed_step) {
+        engine.input.endFrame();
     }
 
     // Begin editor ImGui frame (before any rendering)
@@ -166,8 +176,6 @@ fn onFrame() callconv(.c) void {
     }
 
     engine.renderer.endFrame();
-
-    engine.input.endFrame();
 }
 
 fn onEvent(event: [*c]const sapp.Event) callconv(.c) void {

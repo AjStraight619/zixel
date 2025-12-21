@@ -52,8 +52,12 @@ pub const NavMazeScene = struct {
         // Click to move
         if (self.ctx.input.isMousePressed(.left)) {
             const p = self.ctx.input.mousePosition();
+            std.debug.print("Mouse position: ({}, {})\n", .{ p.x, p.y });
             if (self.agent) |h| {
                 self.nav.setTargetWorld(h, Vec2.init(p.x, p.y));
+                const body = self.ctx.world.getBody(h).?;
+                const body_kind = body.kind;
+                std.debug.print("Body kind: {}\n", .{body_kind});
             }
         }
 

@@ -53,8 +53,9 @@ pub const Config = struct {
     // Restitution clamp
     restitution_clamp_threshold: f32 = 3.0,
 
-    // Linear damping (per step)
+    // Damping (per step)
     linear_damping: f32 = 0.002, // 0.2% velocity reduction per physics step
+    angular_damping: f32 = 0.05, // 5% angular velocity reduction per step (rotation needs more damping)
 
     // Debug
     debug_logging: bool = false,
@@ -158,7 +159,7 @@ fn stepPhysics(self: *World, dt: f32) void {
 
     self.solveCollisions();
 
-    self.applyLinearDamping();
+    self.applyDamping();
 
     self.maybeLogDebug();
 }
@@ -275,17 +276,23 @@ fn processCollisionPairIter(ctx: Ctx, body1: *Body, body2: *Body) void {
     }
 }
 
-fn applyLinearDamping(self: *World) void {
-    if (self.cfg.linear_damping <= 0) return;
-
-    const factor = 1.0 - self.cfg.linear_damping;
+fn applyDamping(self: *World) void {
+    const lin_factor = 1.0 - self.cfg.linear_damping;
+    const ang_factor = 1.0 - self.cfg.angular_damping;
 
     for (self.slots.items) |*slot| {
         if (!slot.alive) continue;
         const body = &slot.body;
 
         if (body.kind == .dynamic and !body.isSleeping()) {
-            body.velocity = body.velocity.scale(factor);
+            // Linear damping
+            if (self.cfg.linear_damping > 0) {
+                body.velocity = body.velocity.scale(lin_factor);
+            }
+            // Angular damping - prevents infinite spinning
+            if (self.cfg.angular_damping > 0) {
+                body.angular_velocity *= ang_factor;
+            }
         }
     }
 }
