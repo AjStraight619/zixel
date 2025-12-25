@@ -25,7 +25,15 @@ pub const physics = struct {
     pub const BodyHandle = @import("physics/handle.zig").BodyHandle;
     pub const PhysicsShape = @import("math/shapes.zig").PhysicsShape;
     pub const collision = @import("physics/collision.zig");
+    pub const response = @import("physics/response.zig");
+    pub const narrowphase = @import("physics/narrowphase.zig");
 };
+
+// Force test discovery for physics modules
+test {
+    _ = @import("physics/response.zig");
+    _ = @import("physics/narrowphase.zig");
+}
 
 // Math
 pub const math = struct {
