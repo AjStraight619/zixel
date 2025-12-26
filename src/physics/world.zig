@@ -57,6 +57,10 @@ pub const Config = struct {
     linear_damping: f32 = 0.002, // 0.2% velocity reduction per physics step
     angular_damping: f32 = 0.05, // 5% angular velocity reduction per step (rotation needs more damping)
 
+    // Velocity limits (prevents instability)
+    max_linear_velocity: f32 = 2000.0, // pixels/sec
+    max_angular_velocity: f32 = 20.0, // radians/sec (~3 rotations/sec)
+
     // Debug
     debug_logging: bool = false,
     debug_log_interval: u64 = 60,
@@ -140,13 +144,6 @@ pub fn forEachBodyConst(self: *const World, ctx: anytype, comptime func: anytype
     }
 }
 
-/// One fixed physics step.
-/// Pipeline:
-///  1) update sleeping
-///  2) apply forces -> integrate linear/angular velocity
-///  3) integrate position/rotation
-///  4) collision solve (impulses once, position correction many)
-///  5) damping
 fn stepPhysics(self: *World, dt: f32) void {
     self.debug_stats = .{};
 
@@ -207,7 +204,9 @@ fn integratePositions(self: *World, dt: f32) void {
             .dynamic => {
                 if (body.isSleeping()) continue;
                 body.position = body.position.add(body.velocity.scale(dt));
-                body.rotation += body.angular_velocity * dt; // <-- this is what makes rotation actually happen
+                body.rotation += body.angular_velocity * dt;
+                // Ensures rotations stays between -pi to pi
+                body.rotation = std.math.wrap(body.rotation, std.math.pi);
             },
             .kinematic => {
                 body.position = body.position.add(body.velocity.scale(dt));
@@ -221,14 +220,64 @@ fn integratePositions(self: *World, dt: f32) void {
 /// Collision solve design:
 /// - Apply velocity impulses once per step (stable + cheap)
 /// - Apply positional correction multiple times for stack stability
-fn solveCollisions(self: *World) void {
-    // Iter 0: does impulses + correction
-    // Iter 1..N: does correction only
-    for (0..self.cfg.position_iterations) |iter| {
-        self.rebuildBroadphase();
+// fn solveCollisions(self: *World) void {
+//     // Iter 0: does impulses + correction
+//     // Iter 1..N: does correction only
+//     for (0..self.cfg.position_iterations) |iter| {
+//         self.rebuildBroadphase();
 
-        const ctx = Ctx{ .world = self, .iter = iter };
-        self.spatial_hash.forEachPair(ctx, processCollisionPairIter);
+//         const ctx = Ctx{ .world = self, .iter = iter };
+//         self.spatial_hash.forEachPair(ctx, processCollisionPairIter);
+//     }
+// }
+
+fn solveCollisions(self: *World) void {
+    // PHASE 1: BROADPHASE
+    // We do this EXACTLY ONCE.
+    // We trust that bodies won't tunnel completely through objects during the sub-steps.
+    // (The 'Fat AABB' or 'Contact Slop' handles small movements)
+    self.spatial_hash.update(self.slots.items) catch |err| {
+        std.log.err("Broadphase failed: {}", .{err});
+        return;
+    };
+
+    const pairs = self.spatial_hash.pairs.items;
+    self.debug_stats.collision_checks = @intCast(pairs.len);
+
+    // PHASE 2: SOLVER LOOP
+    // We iterate the resolution logic multiple times over the SAME pairs.
+    for (0..self.cfg.position_iterations) |iter| {
+        for (pairs) |pair| {
+            const body1 = pair.a;
+            const body2 = pair.b;
+
+            // Narrowphase check
+            // Note: We check collision again because position correction might have separated them
+            if (checkBodiesCollision(body1, body2)) |manifold| {
+                if (iter == 0) self.debug_stats.collisions_found += 1;
+
+                self.debug_stats.max_penetration = @max(self.debug_stats.max_penetration, manifold.penetration);
+
+                // Velocity Impulses (Once per step)
+                if (iter == 0) {
+                    CollisionResponse.resolveWithMaterials(
+                        body1,
+                        body2,
+                        manifold,
+                        body1.restitution,
+                        body2.restitution,
+                        body1.friction,
+                        body2.friction,
+                        self.cfg.restitution_clamp_threshold,
+                    );
+                }
+
+                // Position Correction (Every Iteration)
+                if (manifold.penetration > self.cfg.contact_slop) {
+                    CollisionResponse.correctPositions(body1, body2, manifold, self.cfg.baumgarte_factor);
+                }
+            }
+        }
     }
 }
 
@@ -293,6 +342,17 @@ fn applyDamping(self: *World) void {
             if (self.cfg.angular_damping > 0) {
                 body.angular_velocity *= ang_factor;
             }
+
+            // Clamp velocities to prevent instability
+            const speed = body.velocity.length();
+            if (speed > self.cfg.max_linear_velocity) {
+                body.velocity = body.velocity.scale(self.cfg.max_linear_velocity / speed);
+            }
+            body.angular_velocity = std.math.clamp(
+                body.angular_velocity,
+                -self.cfg.max_angular_velocity,
+                self.cfg.max_angular_velocity,
+            );
         }
     }
 }

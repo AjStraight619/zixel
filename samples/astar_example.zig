@@ -12,6 +12,8 @@ const Grid = zixel.core.nav.Grid;
 
 pub const NavMazeScene = struct {
     pub const name = "astar_example";
+    pub const is_blocking = false;
+    pub const is_opaque = false;
 
     ctx: Engine.Ctx,
     nav: Nav,

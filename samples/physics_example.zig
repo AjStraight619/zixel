@@ -9,6 +9,8 @@ const Color = zixel.Color;
 
 pub const PhysicsScene = struct {
     pub const name = "physics_example";
+    pub const is_blocking = false;
+    pub const is_opaque = false;
 
     ctx: Engine.Ctx,
     sprites: std.ArrayList(Sprite),

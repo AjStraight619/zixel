@@ -85,8 +85,8 @@ pub const Body = struct {
     }
 
     /// Compute moment of inertia for a shape with given mass
-    /// Rectangle: I = (1/12) * m * (w² + h²)
-    /// Circle:    I = (1/2) * m * r²
+    /// Rectangle: I = (1/12) * m * (w^2 + h^2)
+    /// Circle:    I = (1/2) * m * r^2
     fn computeInertia(shape: PhysicsShape, mass: f32) f32 {
         return switch (shape) {
             .rectangle => |r| (1.0 / 12.0) * mass * (r.width * r.width + r.height * r.height),

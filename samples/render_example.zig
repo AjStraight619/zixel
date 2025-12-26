@@ -7,6 +7,8 @@ const Renderer = zixel.Renderer;
 
 pub const ExampleScene = struct {
     pub const name = "render_example";
+    pub const is_blocking = false;
+    pub const is_opaque = false;
 
     ctx: Engine.Ctx,
     time: f32,

@@ -89,10 +89,6 @@ pub fn handleEvent(_: *Editor, event: [*c]const sapp.Event) bool {
     return simgui.handleEvent(event.*);
 }
 
-// ============================================================================
-// Main Menu Bar
-// ============================================================================
-
 fn renderMainMenuBar(self: *Editor) void {
     if (ig.igBeginMainMenuBar()) {
         if (ig.igBeginMenu("File")) {
@@ -135,10 +131,6 @@ fn renderMainMenuBar(self: *Editor) void {
     }
 }
 
-// ============================================================================
-// Scene View Panel
-// ============================================================================
-
 fn renderSceneView(self: *Editor) void {
     ig.igSetNextWindowPos(.{ .x = 250, .y = 30 }, ig.ImGuiCond_FirstUseEver);
     ig.igSetNextWindowSize(.{ .x = 800, .y = 500 }, ig.ImGuiCond_FirstUseEver);
@@ -166,10 +158,6 @@ fn renderSceneView(self: *Editor) void {
     }
     ig.igEnd();
 }
-
-// ============================================================================
-// Hierarchy Panel - shows bodies from the physics world
-// ============================================================================
 
 fn renderHierarchy(self: *Editor) void {
     ig.igSetNextWindowPos(.{ .x = 10, .y = 30 }, ig.ImGuiCond_FirstUseEver);
@@ -256,10 +244,6 @@ fn renderInspector(self: *Editor) void {
     }
     ig.igEnd();
 }
-
-// ============================================================================
-// Console Panel
-// ============================================================================
 
 fn renderConsole(self: *Editor) void {
     ig.igSetNextWindowPos(.{ .x = 10, .y = 540 }, ig.ImGuiCond_FirstUseEver);

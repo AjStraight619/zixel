@@ -9,6 +9,8 @@ const Color = zixel.Color;
 
 pub const AngularRectsScene = struct {
     pub const name = "angular_vel_example";
+    pub const is_blocking = false;
+    pub const is_opaque = false;
 
     ctx: Engine.Ctx,
     sprites: std.ArrayList(Sprite),
