@@ -5,13 +5,45 @@ const Vec2 = @import("../math/vec2.zig");
 const Body = @import("body.zig").Body;
 const ContactManifold = @import("narrowphase.zig").ContactManifold;
 
-// Small thresholds to avoid doing tiny useless corrections.
+// Small thresholds to avoid doing tiny useless corrections (micro-jitter).
 const TANGENT_EPS: f32 = 1e-6;
 const TANGENT_DEADZONE: f32 = 1e-4;
 
+/// We calculate this ONCE per body per collision to avoid repeated lookups.
+const SolverData = struct {
+    inv_mass: f32,
+    inv_inertia: f32,
+    r: Vec2, // The lever arm (vector from center of body to contact point)
+
+    /// Calculates "Effective Inverse Mass" (K) along a specific direction.
+    /// This represents how much velocity a point on the body gains when pushed.
+    /// Formula: K = (1/Mass) + (LeverArm_Perpendicular^2 / Inertia)
+    fn getEffectiveMass(self: SolverData, dir: Vec2) f32 {
+        // The cross product in 2D (r cross dir) is a scalar representing the
+        // perpendicular distance from the center of mass to the line of force.
+        const rn = self.r.cross2(dir);
+        return self.inv_mass + (rn * rn) * self.inv_inertia;
+    }
+};
+
+/// Helper to build the cache.
+fn getSolverData(body: *Body, contact_point: Vec2) SolverData {
+    if (body.kind != .dynamic) {
+        return .{
+            .inv_mass = 0.0,
+            .inv_inertia = 0.0,
+            .r = Vec2.zero,
+        };
+    }
+    return .{
+        .inv_mass = 1.0 / body.mass,
+        .inv_inertia = 1.0 / body.inertia,
+        .r = contact_point.sub(body.position),
+    };
+}
+
 /// Entry point for collision response.
 /// Handles bounce first, then friction.
-/// This is called once per collision per physics step.
 pub fn resolveWithMaterials(
     body1: *Body,
     body2: *Body,
@@ -22,21 +54,134 @@ pub fn resolveWithMaterials(
     friction2: f32,
     restitution_clamp_threshold: f32,
 ) void {
-    // Combine material properties in a simple, symmetric way.
-    const restitution: f32 = @sqrt(restitution1 * restitution2);
-    const friction: f32 = @sqrt(friction1 * friction2);
+    // 1. Pre-calculate solver data (Mass, Inertia, R-vector)
+    const sd1 = getSolverData(body1, m.point);
+    const sd2 = getSolverData(body2, m.point);
 
-    // Resolve bounce along the contact normal.
-    // This also returns the relative velocity at the contact point
-    // before the impulse, which friction needs.
-    const res = resolveNormalImpulse(body1, body2, m, restitution, restitution_clamp_threshold);
+    // Combine material properties
+    const restitution = @sqrt(restitution1 * restitution2);
+    const friction = @sqrt(friction1 * friction2);
 
-    // Apply friction along the tangent direction.
-    applyFrictionImpulse(body1, body2, m, friction, res.jn, res.vrel_before);
+    // 2. Resolve Bounce (Normal Impulse)
+    const res = resolveNormalImpulse(body1, body2, sd1, sd2, m, restitution, restitution_clamp_threshold);
+
+    // 3. Resolve Friction (Tangent Impulse)
+    applyFrictionImpulse(body1, body2, sd1, sd2, m, friction, res.jn, res.vrel_before);
 }
 
-/// Push overlapping bodies apart after collision detection.
-/// This runs multiple times per step to stabilize stacks.
+const NormalImpulseResult = struct {
+    jn: f32,
+    vrel_before: Vec2,
+};
+
+/// Handles bounce along the collision normal.
+fn resolveNormalImpulse(
+    body1: *Body,
+    body2: *Body,
+    sd1: SolverData,
+    sd2: SolverData,
+    m: ContactManifold,
+    restitution: f32,
+    clamp_threshold: f32,
+) NormalImpulseResult {
+    // Calculate velocity at the specific contact point for each body
+    // Velocity = LinearVel + (AngularVel * R_perp)
+    const v1 = if (body1.kind == .dynamic)
+        body1.velocity.add(Vec2{ .x = -body1.angular_velocity * sd1.r.y, .y = body1.angular_velocity * sd1.r.x })
+    else
+        Vec2.zero;
+
+    const v2 = if (body2.kind == .dynamic)
+        body2.velocity.add(Vec2{ .x = -body2.angular_velocity * sd2.r.y, .y = body2.angular_velocity * sd2.r.x })
+    else
+        Vec2.zero;
+
+    // Relative velocity
+    const vrel = v2.sub(v1);
+    const vn = vrel.dot(m.normal);
+
+    // If bodies are already separating, don't bounce
+    if (vn > 0.0) {
+        return .{ .jn = 0.0, .vrel_before = vrel };
+    }
+
+    // Compute "K" (Total Inverse Effective Mass)
+    // This single number tells us how "soft" the system is along the normal.
+    const k = sd1.getEffectiveMass(m.normal) + sd2.getEffectiveMass(m.normal);
+
+    // If K is zero, both bodies are static/infinite mass, so we can't do anything.
+    if (k <= 0.0) return .{ .jn = 0.0, .vrel_before = vrel };
+
+    // Bias (Restitution) - disable bounce if impact is very slow
+    const e = if (@abs(vn) < clamp_threshold) 0.0 else restitution;
+
+    // Calculate impulse magnitude (scalar)
+    var jn = -(1.0 + e) * vn / k;
+    jn = @min(jn, 1000.0); // Clamp huge impulses for stability
+
+    // Apply the impulse to both bodies
+    const impulse_vec = m.normal.scale(jn);
+    applyImpulse(body1, sd1, impulse_vec.negate()); // Body 1 pushed opposite
+    applyImpulse(body2, sd2, impulse_vec); // Body 2 pushed forward
+
+    return .{ .jn = jn, .vrel_before = vrel };
+}
+
+/// Applies friction along the surface tangent.
+fn applyFrictionImpulse(
+    body1: *Body,
+    body2: *Body,
+    sd1: SolverData,
+    sd2: SolverData,
+    m: ContactManifold,
+    friction: f32,
+    jn: f32,
+    vrel_old: Vec2,
+) void {
+    if (jn == 0.0) return;
+
+    // 1. Calculate the Tangent Vector (Direction of slide)
+    const vn = vrel_old.dot(m.normal);
+    const tangent = vrel_old.sub(m.normal.scale(vn));
+
+    if (tangent.length() < TANGENT_EPS) return;
+    const t_hat = tangent.normalize();
+
+    // 2. Check tangential velocity magnitude
+    const vt = vrel_old.dot(t_hat);
+    if (@abs(vt) < TANGENT_DEADZONE) return;
+
+    // 3. Compute "K" along the Tangent
+    const k = sd1.getEffectiveMass(t_hat) + sd2.getEffectiveMass(t_hat);
+
+    if (k <= 0.0) return;
+
+    // 4. Calculate Friction Impulse
+    var jt = -vt / k;
+
+    // Clamp friction using Coulomb's Law: Friction <= NormalForce * coefficient
+    const max_jt = friction * @abs(jn);
+    jt = math.clamp(jt, -max_jt, max_jt);
+
+    // 5. Apply
+    const impulse_vec = t_hat.scale(jt);
+    applyImpulse(body1, sd1, impulse_vec.negate());
+    applyImpulse(body2, sd2, impulse_vec);
+}
+
+/// Internal helper to apply a raw impulse vector to a body using cached data.
+fn applyImpulse(body: *Body, sd: SolverData, impulse: Vec2) void {
+    if (body.kind != .dynamic) return;
+
+    // Linear: v += impulse / mass
+    body.velocity = body.velocity.add(impulse.scale(sd.inv_mass));
+
+    // Angular: w += (r x impulse) / inertia
+    body.angular_velocity += sd.r.cross2(impulse) * sd.inv_inertia;
+}
+
+/// Push overlapping bodies apart.
+/// This does NOT need SolverData because it operates on Position, not Velocity/Inertia.
 pub fn correctPositions(
     body1: *Body,
     body2: *Body,
@@ -46,176 +191,274 @@ pub fn correctPositions(
     const b1_dyn = body1.kind == .dynamic;
     const b2_dyn = body2.kind == .dynamic;
 
-    // If neither body can move, there is nothing to correct.
     if (!b1_dyn and !b2_dyn) return;
 
-    const inv_m1: f32 = if (b1_dyn) 1.0 / body1.mass else 0.0;
-    const inv_m2: f32 = if (b2_dyn) 1.0 / body2.mass else 0.0;
+    const inv_m1 = if (b1_dyn) 1.0 / body1.mass else 0.0;
+    const inv_m2 = if (b2_dyn) 1.0 / body2.mass else 0.0;
+    const sum = inv_m1 + inv_m2;
 
-    const inv_mass_sum = inv_m1 + inv_m2;
-    if (inv_mass_sum <= 0.0) return;
+    if (sum <= 0.0) return;
 
-    // Move bodies apart along the collision normal,
-    // scaled by how movable they are.
-    const corr_mag = (m.penetration / inv_mass_sum) * correction_factor;
+    const corr_mag = (m.penetration / sum) * correction_factor;
     const corr = m.normal.scale(corr_mag);
 
     if (b1_dyn) body1.position = body1.position.sub(corr.scale(inv_m1));
     if (b2_dyn) body2.position = body2.position.add(corr.scale(inv_m2));
 }
 
-/// Result from the normal impulse step.
-/// Used so friction can see the same contact velocity.
-const NormalImpulseResult = struct {
-    jn: f32,
-    vrel_before: Vec2,
-};
+const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
 
-/// Handles bounce along the collision normal.
-/// Updates linear and angular velocity.
-fn resolveNormalImpulse(
-    body1: *Body,
-    body2: *Body,
-    m: ContactManifold,
-    restitution: f32,
-    restitution_clamp_threshold: f32,
-) NormalImpulseResult {
-    const b1_dyn = body1.kind == .dynamic;
-    const b2_dyn = body2.kind == .dynamic;
-
-    const inv_m1: f32 = if (b1_dyn) 1.0 / body1.mass else 0.0;
-    const inv_m2: f32 = if (b2_dyn) 1.0 / body2.mass else 0.0;
-    const inv_i1: f32 = if (b1_dyn) 1.0 / body1.inertia else 0.0;
-    const inv_i2: f32 = if (b2_dyn) 1.0 / body2.inertia else 0.0;
-
-    // No impulse if nothing can move.
-    if (inv_m1 + inv_m2 <= 0.0) {
-        return .{ .jn = 0.0, .vrel_before = Vec2.zero };
-    }
-
-    // Offset from each center to the contact point.
-    const r1 = m.point.sub(body1.position);
-    const r2 = m.point.sub(body2.position);
-
-    // Velocity at the contact point includes both linear motion
-    // and rotation around the center.
-    const v1 = if (body1.kind != .static) body1.velocity else Vec2.zero;
-    const v2 = if (body2.kind != .static) body2.velocity else Vec2.zero;
-
-    const w1: f32 = if (b1_dyn) body1.angular_velocity else 0.0;
-    const w2: f32 = if (b2_dyn) body2.angular_velocity else 0.0;
-
-    const v1c = v1.add(Vec2{ .x = -w1 * r1.y, .y = w1 * r1.x });
-    const v2c = v2.add(Vec2{ .x = -w2 * r2.y, .y = w2 * r2.x });
-
-    const vrel = v2c.sub(v1c);
-
-    // How fast the contact points are moving toward each other.
-    const vn = vrel.dot(m.normal);
-
-    // If already separating, skip.
-    if (vn > 0.0) {
-        return .{ .jn = 0.0, .vrel_before = vrel };
-    }
-
-    // Turn off bounce when impact speed is very small.
-    const e: f32 = if (@abs(vn) < restitution_clamp_threshold) 0.0 else restitution;
-
-    // How hard it is to push along the normal,
-    // including rotation effects.
-    const rn1 = r1.cross2(m.normal);
-    const rn2 = r2.cross2(m.normal);
-
-    const k = (inv_m1 + inv_m2) + (rn1 * rn1) * inv_i1 + (rn2 * rn2) * inv_i2;
-
-    if (k <= 0.0) {
-        return .{ .jn = 0.0, .vrel_before = vrel };
-    }
-
-    var jn: f32 = -(1.0 + e) * vn;
-    jn /= k;
-
-    applyImpulse(body1, body2, m.point, m.normal.scale(jn));
-
-    return .{ .jn = jn, .vrel_before = vrel };
+fn makeTestDynamicBody(x: f32, y: f32, size: f32) Body {
+    return Body.initDynamic(
+        PhysicsShape{ .rectangle = .{ .width = size, .height = size } },
+        Vec2.init(x, y),
+        .{ .mass = 1.0 },
+    );
 }
 
-/// Applies friction along the surface at the contact point.
-/// Uses the relative velocity from before the normal impulse.
-fn applyFrictionImpulse(
-    body1: *Body,
-    body2: *Body,
-    m: ContactManifold,
-    friction: f32,
-    jn: f32,
-    vrel_before_normal: Vec2,
-) void {
-    if (jn == 0.0) return;
-
-    const b1_dyn = body1.kind == .dynamic;
-    const b2_dyn = body2.kind == .dynamic;
-
-    const inv_m1: f32 = if (b1_dyn) 1.0 / body1.mass else 0.0;
-    const inv_m2: f32 = if (b2_dyn) 1.0 / body2.mass else 0.0;
-    const inv_i1: f32 = if (b1_dyn) 1.0 / body1.inertia else 0.0;
-    const inv_i2: f32 = if (b2_dyn) 1.0 / body2.inertia else 0.0;
-
-    // Remove the normal part, leaving only sideways motion.
-    const vn = vrel_before_normal.dot(m.normal);
-    const tangent = vrel_before_normal.sub(m.normal.scale(vn));
-
-    if (tangent.length() < TANGENT_EPS) return;
-
-    const t_hat = tangent.normalize();
-    const vt = vrel_before_normal.dot(t_hat);
-
-    // Ignore extremely small sideways motion.
-    if (@abs(vt) < TANGENT_DEADZONE) return;
-
-    const r1 = m.point.sub(body1.position);
-    const r2 = m.point.sub(body2.position);
-
-    // How hard it is to push sideways at the contact point.
-    const rt1 = r1.cross2(t_hat);
-    const rt2 = r2.cross2(t_hat);
-
-    const k = (inv_m1 + inv_m2) + (rt1 * rt1) * inv_i1 + (rt2 * rt2) * inv_i2;
-
-    if (k <= 0.0) return;
-
-    var jt: f32 = -vt / k;
-
-    // Limit friction based on the normal impulse.
-    const max_jt = friction * @abs(jn);
-    jt = math.clamp(jt, -max_jt, max_jt);
-
-    applyImpulse(body1, body2, m.point, t_hat.scale(jt));
+fn makeTestStaticBody(x: f32, y: f32, w: f32, h: f32, rot: f32) Body {
+    return Body.initStatic(
+        PhysicsShape{ .rectangle = .{ .width = w, .height = h } },
+        Vec2.init(x, y),
+        .{ .rotation = rot },
+    );
 }
 
-/// Applies an impulse at a world-space point.
-/// Updates both linear and angular velocity.
-fn applyImpulse(body1: *Body, body2: *Body, point: Vec2, impulse: Vec2) void {
-    const b1_dyn = body1.kind == .dynamic;
-    const b2_dyn = body2.kind == .dynamic;
+test "cross2: basic directions" {
+    // Right × Up = positive (CCW)
+    const right = Vec2.init(1, 0);
+    const up = Vec2.init(0, -1); // In screen coords, up is -y
+    try std.testing.expectApproxEqAbs(@as(f32, -1.0), right.cross2(up), 0.001);
 
-    if (!b1_dyn and !b2_dyn) return;
+    // Right × Down = negative (CW)
+    const down = Vec2.init(0, 1);
+    try std.testing.expectApproxEqAbs(@as(f32, 1.0), right.cross2(down), 0.001);
+}
 
-    if (b1_dyn) {
-        const inv_m1 = 1.0 / body1.mass;
-        body1.velocity = body1.velocity.sub(impulse.scale(inv_m1));
+test "applyImpulse: center hit causes no rotation" {
+    var body = makeTestDynamicBody(100, 100, 40);
+    var static = makeTestStaticBody(100, 150, 200, 20, 0);
 
-        // Off-center impulse causes rotation.
-        const r1 = point.sub(body1.position);
-        const inv_i1 = 1.0 / body1.inertia;
-        body1.angular_velocity -= r1.cross2(impulse) * inv_i1;
-    }
+    // NOTE: In applyImpulse, the `impulse` param is what BODY2 receives.
+    // Body1 receives the OPPOSITE. So to push body1 UP, we pass DOWN impulse.
+    const impulse = Vec2.init(0, 100); // body2 gets pushed DOWN, body1 gets pushed UP
+    const contact_at_center = Vec2.init(100, 100);
 
-    if (b2_dyn) {
-        const inv_m2 = 1.0 / body2.mass;
-        body2.velocity = body2.velocity.add(impulse.scale(inv_m2));
+    applyImpulse(&body, &static, contact_at_center, impulse);
 
-        const r2 = point.sub(body2.position);
-        const inv_i2 = 1.0 / body2.inertia;
-        body2.angular_velocity += r2.cross2(impulse) * inv_i2;
-    }
+    std.debug.print("\n[TEST] center hit:\n", .{});
+    std.debug.print("  body.velocity = ({d:.1}, {d:.1})\n", .{ body.velocity.x, body.velocity.y });
+    std.debug.print("  body.angular_velocity = {d:.3}\n", .{body.angular_velocity});
+
+    // body1 velocity should decrease (go negative = up)
+    try std.testing.expect(body.velocity.y < 0); // Moving up
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0), body.angular_velocity, 0.001);
+}
+
+test "applyImpulse: right-side hit - understand the direction" {
+    var body = makeTestDynamicBody(100, 100, 40);
+    var static = makeTestStaticBody(100, 150, 200, 20, 0);
+
+    // To push body1 UP at the RIGHT side:
+    // - Pass impulse that goes DOWN (body2 gets down, body1 gets up)
+    const impulse = Vec2.init(0, 100); // body2 down, body1 up
+    const contact_right = Vec2.init(120, 100); // Right of body1's center
+
+    applyImpulse(&body, &static, contact_right, impulse);
+
+    std.debug.print("\n[TEST] right-side, body1 pushed UP:\n", .{});
+    std.debug.print("  body.velocity = ({d:.1}, {d:.1})\n", .{ body.velocity.x, body.velocity.y });
+    std.debug.print("  body.angular_velocity = {d:.3}\n", .{body.angular_velocity});
+
+    // Pushing UP on RIGHT side = CCW rotation = negative ω in Y-down coords
+    // r = (20, 0), body1 receives force (0, -100)
+    // torque = r × F = 20 * (-100) - 0 * 0 = -2000 → negative ω
+    try std.testing.expect(body.angular_velocity < 0);
+}
+
+test "applyImpulse: left-side hit - understand the direction" {
+    var body = makeTestDynamicBody(100, 100, 40);
+    var static = makeTestStaticBody(100, 150, 200, 20, 0);
+
+    // To push body1 UP at the LEFT side:
+    const impulse = Vec2.init(0, 100); // body2 down, body1 up
+    const contact_left = Vec2.init(80, 100); // Left of body1's center
+
+    applyImpulse(&body, &static, contact_left, impulse);
+
+    std.debug.print("\n[TEST] left-side, body1 pushed UP:\n", .{});
+    std.debug.print("  body.velocity = ({d:.1}, {d:.1})\n", .{ body.velocity.x, body.velocity.y });
+    std.debug.print("  body.angular_velocity = {d:.3}\n", .{body.angular_velocity});
+
+    // Pushing UP on LEFT side = CW rotation = positive ω
+    // r = (-20, 0), body1 receives force (0, -100)
+    // torque = r × F = (-20) * (-100) - 0 * 0 = +2000 → positive ω
+    try std.testing.expect(body.angular_velocity > 0);
+}
+
+test "box falling on flat ground: should not spin" {
+    var box = makeTestDynamicBody(100, 80, 40);
+    box.velocity = Vec2.init(0, 100); // Falling down
+
+    var ground = makeTestStaticBody(100, 120, 200, 20, 0);
+
+    // Normal convention: points FROM body1 TO body2
+    // box is body1, ground is body2
+    // So normal should point DOWN (from box toward ground)
+    const manifold = ContactManifold.init(
+        Vec2.init(100, 100), // Contact point at box bottom center
+        Vec2.init(0, 1), // Normal pointing DOWN (from box to ground)
+        5.0, // Some penetration
+    );
+
+    std.debug.print("\n[TEST] box falling on flat ground:\n", .{});
+    std.debug.print("  before: vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+
+    // vrel = v2 - v1 = 0 - (0, 100) = (0, -100)
+    // vn = vrel.dot(normal) = (0, -100).dot(0, 1) = -100 (approaching)
+    // jn = -(1+e) * vn / k = -(1.5) * (-100) / k = 150 / k
+    // impulse = normal * jn = (0, jn) pushing ground down, box up
+
+    _ = resolveNormalImpulse(&box, &ground, manifold, 0.5, 3.0);
+
+    std.debug.print("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+
+    // Contact at center = no rotation
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0), box.angular_velocity, 0.001);
+    // Velocity should reverse (bounce up = negative Y)
+    try std.testing.expect(box.velocity.y < 0);
+}
+
+test "box sliding down ramp: friction causes rolling" {
+    var box = makeTestDynamicBody(100, 80, 40);
+    box.velocity = Vec2.init(50, 100); // Moving right and down
+
+    // Ramp is below and to the right
+    var ramp = makeTestStaticBody(120, 100, 200, 20, 0.785); // 45 degrees
+
+    // Normal points FROM box TO ramp (down-right at 45 degrees)
+    const normal = Vec2.init(0.707, 0.707).normalize();
+
+    // Contact at bottom-right corner of box
+    const manifold = ContactManifold.init(
+        Vec2.init(115, 95),
+        normal,
+        3.0,
+    );
+
+    std.debug.print("\n[TEST] box on ramp WITH FRICTION:\n", .{});
+    std.debug.print("  box center: (100, 80)\n", .{});
+    std.debug.print("  before: vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+
+    const r = manifold.point.sub(box.position);
+    std.debug.print("  r (lever arm): ({d:.1}, {d:.1})\n", .{ r.x, r.y });
+    std.debug.print("  r × normal = {d:.3} (if 0, normal impulse won't cause rotation)\n", .{r.cross2(normal)});
+
+    // Use the FULL collision response with friction
+    resolveWithMaterials(&box, &ramp, manifold, 0.0, 0.0, 0.5, 0.5, 3.0);
+
+    std.debug.print("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+
+    // With friction, the box should start spinning
+    // Friction opposes the sliding velocity (tangent to surface)
+    // This friction force applied at the contact point causes rotation
+    std.debug.print("  (any non-zero ω means friction caused rotation)\n", .{});
+
+    // Friction should cause SOME rotation (either direction depending on slide direction)
+    // Box is sliding down-right, friction pulls it back (up-left along surface)
+    // Friction at bottom-right corner pulling up-left = CCW = negative ω
+    try std.testing.expect(box.angular_velocity != 0);
+}
+
+test "off-center contact causes rotation from normal impulse" {
+    var box = makeTestDynamicBody(100, 100, 40);
+    box.velocity = Vec2.init(0, 100); // Falling down
+
+    var ground = makeTestStaticBody(100, 140, 200, 20, 0);
+
+    // Contact at the RIGHT edge of box bottom (not center)
+    // This creates a lever arm that's NOT parallel to normal
+    const manifold = ContactManifold.init(
+        Vec2.init(118, 120), // Right side of box bottom
+        Vec2.init(0, 1), // Normal pointing DOWN
+        5.0,
+    );
+
+    std.debug.print("\n[TEST] off-center ground hit:\n", .{});
+    std.debug.print("  box center: (100, 100)\n", .{});
+    std.debug.print("  contact: ({d:.1}, {d:.1})\n", .{ manifold.point.x, manifold.point.y });
+
+    const r = manifold.point.sub(box.position);
+    std.debug.print("  r (lever arm): ({d:.1}, {d:.1})\n", .{ r.x, r.y });
+    std.debug.print("  normal: ({d:.1}, {d:.1})\n", .{ manifold.normal.x, manifold.normal.y });
+    std.debug.print("  r × normal = {d:.3}\n", .{r.cross2(manifold.normal)});
+
+    std.debug.print("  before: vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+
+    _ = resolveNormalImpulse(&box, &ground, manifold, 0.5, 3.0);
+
+    std.debug.print("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+
+    // r = (18, 20), normal = (0, 1)
+    // r × normal = 18 * 1 - 20 * 0 = 18 (non-zero!)
+    // Impulse pushes box UP (opposite to normal)
+    // Applied at right side = CCW rotation = negative ω
+    try std.testing.expect(box.angular_velocity < 0);
+}
+
+test "realistic ramp scenario: box falling onto 20-degree ramp" {
+    // Simulate ramps_example scenario: 25x25 box falling onto a tilted ramp
+    var box = makeTestDynamicBody(200, 100, 25);
+    box.velocity = Vec2.init(0, 100); // Falling straight down
+
+    // Ramp tilted ~17 degrees (0.3 radians) - going down to the right
+    // Ramp at position (200, 150)
+    var ramp = makeTestStaticBody(200, 150, 250, 15, 0.3);
+
+    // CRITICAL: Normal points FROM body1 (box) TO body2 (ramp)
+    // Box is above ramp, so normal points DOWN (toward ramp)
+    // The ramp is tilted, so the collision normal is the ramp's surface perpendicular
+    // pointing FROM the box side (up) INTO the ramp = surface normal but flipped
+    const ramp_angle: f32 = 0.3;
+    // Surface normal points away from ramp surface = up-left
+    // Collision normal points from box to ramp = DOWN into surface = opposite of surface normal
+    const normal = Vec2.init(@sin(ramp_angle), @cos(ramp_angle)); // Points down-right (into ramp)
+
+    // Contact point: where box corner hits ramp
+    const contact = Vec2.init(212, 112);
+
+    const manifold = ContactManifold.init(contact, normal, 3.0);
+
+    std.debug.print("\n[TEST] Box falling onto tilted ramp (FIXED NORMAL):\n", .{});
+    std.debug.print("  box center: (200, 100)\n", .{});
+    std.debug.print("  ramp angle: {d:.2} rad ({d:.1} degrees)\n", .{ ramp_angle, ramp_angle * 180 / 3.14159 });
+    std.debug.print("  contact: ({d:.1}, {d:.1})\n", .{ contact.x, contact.y });
+    std.debug.print("  normal: ({d:.3}, {d:.3}) [points from box toward ramp]\n", .{ normal.x, normal.y });
+
+    const r = contact.sub(box.position);
+    std.debug.print("  r: ({d:.1}, {d:.1})\n", .{ r.x, r.y });
+    std.debug.print("  r × normal = {d:.3}\n", .{r.cross2(normal)});
+
+    // Check vrel to understand what impulse will do
+    const vrel = Vec2.init(0, 0).sub(box.velocity); // v2 - v1, ramp is static
+    const vn = vrel.dot(normal);
+    std.debug.print("  vrel: ({d:.1}, {d:.1})\n", .{ vrel.x, vrel.y });
+    std.debug.print("  vn = vrel.dot(normal) = {d:.3}\n", .{vn});
+    std.debug.print("  (vn < 0 means approaching, > 0 means separating)\n", .{});
+
+    std.debug.print("  before: vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+
+    // Full collision with friction
+    resolveWithMaterials(&box, &ramp, manifold, 0.4, 0.4, 0.4, 0.4, 3.0);
+
+    std.debug.print("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+
+    // With correct normal (pointing down-right from box to ramp):
+    // - Impulse pushes box OPPOSITE to normal = up-left
+    // - Contact at bottom-right of box
+    // - Up-left force at bottom-right = CCW rotation (negative ω)
+    // - Velocity should change to slide along ramp (up-left component added)
+
+    // Verify impulse was actually applied
+    try std.testing.expect(box.velocity.y < 100); // Should have slowed/reversed
 }
