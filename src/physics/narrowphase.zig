@@ -80,17 +80,54 @@ pub const NarrowPhase = struct {
         return if (overlap > 0.0) overlap else null;
     }
 
-    /// Separating Axis Theorem (SAT) collision detection for two rectangles
+    /// Find the contact point between two colliding rectangles.
+    /// Uses the "incident face" method: find the vertices that penetrate deepest.
+    fn findContactPoint(corners1: *const [4]Vec2, corners2: *const [4]Vec2, normal: Vec2) Vec2 {
+        // Find vertices from rect2 that are "inside" rect1 (penetrating along normal)
+        // These are vertices with the smallest projection onto the normal
+        var best_vertex: Vec2 = corners2[0];
+        var best_proj: f32 = corners2[0].dot(normal);
+
+        for (corners2[1..]) |corner| {
+            const proj = corner.dot(normal);
+            if (proj < best_proj) {
+                best_proj = proj;
+                best_vertex = corner;
+            }
+        }
+
+        // Also check corners1 (penetrating in opposite direction)
+        var best_vertex1: Vec2 = corners1[0];
+        var best_proj1: f32 = corners1[0].dot(normal.negate());
+
+        for (corners1[1..]) |corner| {
+            const proj = corner.dot(normal.negate());
+            if (proj < best_proj1) {
+                best_proj1 = proj;
+                best_vertex1 = corner;
+            }
+        }
+
+        // Return midpoint between the two deepest penetrating vertices
+        // This gives a stable contact point on the collision surface
+        return Vec2{
+            .x = (best_vertex.x + best_vertex1.x) / 2.0,
+            .y = (best_vertex.y + best_vertex1.y) / 2.0,
+        };
+    }
+
     fn satRectangleRectangle(rect1: PhysicsShape, pos1: Vec2, rot1: f32, rect2: PhysicsShape, pos2: Vec2, rot2: f32) ?ContactManifold {
         const corners1 = getRectangleCorners(rect1.rectangle, pos1, rot1);
         const corners2 = getRectangleCorners(rect2.rectangle, pos2, rot2);
 
         var min_overlap: f32 = std.math.inf(f32);
         var separation_axis: Vec2 = undefined;
-        var separating = false;
 
-        // Test axes from rectangle 1 (2 unique axes)
-        for (0..2) |i| {
+        // 0 = Axis came from Rect1, 1 = Axis came from Rect2
+        var axis_source: u8 = 0;
+
+        //  Test axes from Rectangle 1
+        inline for (0..2) |i| {
             const edge = corners1[(i + 1) % 4].sub(corners1[i]);
             const axis = edge.perpendicular().normalize();
 
@@ -101,17 +138,15 @@ pub const NarrowPhase = struct {
                 if (overlap < min_overlap) {
                     min_overlap = overlap;
                     separation_axis = axis;
+                    axis_source = 0; // Rect 1 provided this axis
                 }
             } else {
-                separating = true;
-                break;
+                return null; // Separated
             }
         }
 
-        if (separating) return null;
-
-        // Test axes from rectangle 2 (2 unique axes)
-        for (0..2) |i| {
+        //  Test axes from Rectangle 2
+        inline for (0..2) |i| {
             const edge = corners2[(i + 1) % 4].sub(corners2[i]);
             const axis = edge.perpendicular().normalize();
 
@@ -122,23 +157,35 @@ pub const NarrowPhase = struct {
                 if (overlap < min_overlap) {
                     min_overlap = overlap;
                     separation_axis = axis;
+                    axis_source = 1; // Rect 2 provided this axis
                 }
             } else {
-                return null;
+                return null; // Separated
             }
         }
 
-        // Ensure normal points from rect1 to rect2
+        //  Ensure normal points from rect1 to rect2
         const center_diff = pos2.sub(pos1);
         if (separation_axis.dot(center_diff) < 0.0) {
             separation_axis = separation_axis.negate();
         }
 
-        // Calculate contact point (approximate as midpoint between centers)
-        const contact_point = Vec2{
-            .x = (pos1.x + pos2.x) / 2.0,
-            .y = (pos1.y + pos2.y) / 2.0,
-        };
+        // Determine Contact Point
+        // The contact point is the deepest vertex of the "Incident" body
+        // into the "Reference" body.
+        var contact_point: Vec2 = undefined;
+
+        if (axis_source == 0) {
+            // Axis came from Rect1 (Reference).
+            // Normal points Rect1 -> Rect2.
+            // We want the point on Rect2 (Incident) that is deepest "backwards" against the normal.
+            contact_point = findSupportPoint(&corners2, separation_axis.negate());
+        } else {
+            // Axis came from Rect2 (Reference).
+            // Normal points Rect1 -> Rect2.
+            // We want the point on Rect1 (Incident) that is deepest "forwards" along the normal.
+            contact_point = findSupportPoint(&corners1, separation_axis);
+        }
 
         return ContactManifold.init(contact_point, separation_axis, min_overlap);
     }
@@ -152,7 +199,7 @@ pub const NarrowPhase = struct {
         var separation_axis: Vec2 = undefined;
 
         // Test rectangle edge normals
-        for (0..4) |i| {
+        inline for (0..4) |i| {
             const edge = corners[(i + 1) % 4].sub(corners[i]);
             const axis = edge.perpendicular().normalize();
 
@@ -174,7 +221,7 @@ pub const NarrowPhase = struct {
         var min_dist_sq: f32 = std.math.inf(f32);
 
         // Check distance to each corner
-        for (corners) |corner| {
+        inline for (corners) |corner| {
             const dist_sq = corner.distanceSqr(circle_pos);
             if (dist_sq < min_dist_sq) {
                 min_dist_sq = dist_sq;
@@ -183,7 +230,7 @@ pub const NarrowPhase = struct {
         }
 
         // Check distance to each edge
-        for (0..4) |i| {
+        inline for (0..4) |i| {
             const edge_start = corners[i];
             const edge_end = corners[(i + 1) % 4];
             const edge_vec = edge_end.sub(edge_start);
@@ -318,5 +365,37 @@ pub const NarrowPhase = struct {
     /// Rectangle vs Rectangle collision using SAT
     fn checkRectangleRectangle(rect1: PhysicsShape, pos1: Vec2, rot1: f32, rect2: PhysicsShape, pos2: Vec2, rot2: f32) ?ContactManifold {
         return satRectangleRectangle(rect1, pos1, rot1, rect2, pos2, rot2);
+    }
+
+    /// Find the support point.
+    /// If multiple vertices are equally deep (e.g. flat edge), returns their average.
+    fn findSupportPoint(corners: *const [4]Vec2, direction: Vec2) Vec2 {
+        var max_proj: f32 = -std.math.inf(f32);
+
+        //  Find the absolute deepest depth
+        inline for (corners) |c| {
+            const proj = c.dot(direction);
+            if (proj > max_proj) {
+                max_proj = proj;
+            }
+        }
+
+        //  Average all vertices that are "close enough" to that depth
+        // This creates a stable contact point in the middle of a flat edge.
+        var sum = Vec2.zero;
+        var count: f32 = 0.0;
+
+        // If corners are within 0.5 pixels depth of each other, treat them as a flat edge.
+        const tolerance = 0.5;
+
+        inline for (corners) |c| {
+            const proj = c.dot(direction);
+            if (proj >= max_proj - tolerance) {
+                sum = sum.add(c);
+                count += 1.0;
+            }
+        }
+
+        return sum.scale(1.0 / count);
     }
 };
