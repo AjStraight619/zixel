@@ -1,13 +1,40 @@
 const std = @import("std");
-const Vec2 = @import("../math/vec2.zig");
-const Body = @import("body.zig").Body;
 const Allocator = std.mem.Allocator;
+const Body = @import("body.zig").Body;
+const BodySlot = @import("world.zig").BodySlot;
 
-/// Spatial hash grid for O(n) broadphase collision detection
+/// Unique key for deduplicating pairs
+const PairKey = struct {
+    a: usize,
+    b: usize,
+
+    fn init(b1: *Body, b2: *Body) PairKey {
+        const i_1 = @intFromPtr(b1);
+        const i_2 = @intFromPtr(b2);
+        // Sort to ensure A-B is same as B-A
+        if (i_1 < i_2) return .{ .a = i_1, .b = i_2 };
+        return .{ .a = i_2, .b = i_1 };
+    }
+};
+
+pub const CollisionPair = struct {
+    a: *Body,
+    b: *Body,
+};
+
 pub const SpatialHash = struct {
     cell_size: f32,
     inv_cell_size: f32,
+
+    // The Grid: Maps "Cell Hash" -> "List of Bodies in that cell"
     cells: std.AutoHashMap(u64, std.ArrayList(*Body)),
+
+    // The Cache: A linear list of unique pairs found this frame
+    pairs: std.ArrayList(CollisionPair),
+
+    // Helper to ensure we don't add the same pair twice
+    pair_set: std.AutoHashMap(u64, void),
+
     alloc: Allocator,
 
     pub fn init(alloc: Allocator, cell_size: f32) SpatialHash {
@@ -15,6 +42,8 @@ pub const SpatialHash = struct {
             .cell_size = cell_size,
             .inv_cell_size = 1.0 / cell_size,
             .cells = std.AutoHashMap(u64, std.ArrayList(*Body)).init(alloc),
+            .pairs = .empty,
+            .pair_set = std.AutoHashMap(u64, void).init(alloc),
             .alloc = alloc,
         };
     }
@@ -22,10 +51,11 @@ pub const SpatialHash = struct {
     pub fn deinit(self: *SpatialHash) void {
         var it = self.cells.valueIterator();
         while (it.next()) |list| {
-            var mutable_list = list.*;
-            mutable_list.deinit(self.alloc);
+            list.deinit(self.alloc);
         }
         self.cells.deinit();
+        self.pairs.deinit(self.alloc);
+        self.pair_set.deinit();
     }
 
     fn hashCoords(x: i32, y: i32) u64 {
@@ -38,52 +68,60 @@ pub const SpatialHash = struct {
         return @intFromFloat(@floor(val * self.inv_cell_size));
     }
 
-    /// Clear all bodies from the hash (call each frame before inserting)
-    pub fn clear(self: *SpatialHash) void {
+    /// Rebuilds the grid and collects all unique collision pairs.
+    /// Call this ONCE per frame.
+    pub fn update(self: *SpatialHash, slots: []BodySlot) !void {
         var it = self.cells.valueIterator();
-        while (it.next()) |list| {
-            list.clearRetainingCapacity();
-        }
-    }
+        while (it.next()) |list| list.clearRetainingCapacity();
+        self.pairs.clearRetainingCapacity();
+        self.pair_set.clearRetainingCapacity();
 
-    /// Insert a body into all cells it overlaps
-    pub fn insert(self: *SpatialHash, body: *Body) void {
-        const aabb = body.aabb();
+        for (slots) |*slot| {
+            if (!slot.alive) continue;
+            const body = &slot.body;
 
-        const min_x = self.getCellCoord(aabb.min.x);
-        const max_x = self.getCellCoord(aabb.max.x);
-        const min_y = self.getCellCoord(aabb.min.y);
-        const max_y = self.getCellCoord(aabb.max.y);
+            // Compute AABB cover
+            const aabb = body.aabb();
+            const min_x = self.getCellCoord(aabb.min.x);
+            const max_x = self.getCellCoord(aabb.max.x);
+            const min_y = self.getCellCoord(aabb.min.y);
+            const max_y = self.getCellCoord(aabb.max.y);
 
-        var y = min_y;
-        while (y <= max_y) : (y += 1) {
-            var x = min_x;
-            while (x <= max_x) : (x += 1) {
-                const key = hashCoords(x, y);
-                const result = self.cells.getOrPut(key) catch continue;
-                if (!result.found_existing) {
-                    result.value_ptr.* = .empty;
+            var y = min_y;
+            while (y <= max_y) : (y += 1) {
+                var x = min_x;
+                while (x <= max_x) : (x += 1) {
+                    const key = hashCoords(x, y);
+                    const res = try self.cells.getOrPut(key);
+                    if (!res.found_existing) {
+                        res.value_ptr.* = .empty;
+                    }
+                    try res.value_ptr.append(self.alloc, body);
                 }
-                result.value_ptr.append(self.alloc, body) catch {};
             }
         }
-    }
 
-    /// Iterate over potential collision pairs (calls callback for each unique pair)
-    pub fn forEachPair(self: *SpatialHash, context: anytype, callback: fn (@TypeOf(context), *Body, *Body) void) void {
         var cell_it = self.cells.valueIterator();
-        while (cell_it.next()) |bodies| {
-            const items = bodies.items;
-            for (items, 0..) |body1, i| {
-                for (items[i + 1 ..]) |body2| {
-                    // Use pointer comparison to ensure unique pairs and consistent ordering
-                    const p1 = @intFromPtr(body1);
-                    const p2 = @intFromPtr(body2);
-                    // Only process if body1 ptr < body2 ptr (avoids duplicates across cells)
-                    if (p1 < p2) {
-                        callback(context, body1, body2);
-                    } else if (p2 < p1) {
-                        callback(context, body2, body1);
+        while (cell_it.next()) |list| {
+            const items = list.items;
+            if (items.len < 2) continue;
+
+            for (items, 0..) |b1, i| {
+                for (items[i + 1 ..]) |b2| {
+                    // Ignore Static-Static
+                    if (b1.kind != .dynamic and b2.kind != .dynamic) continue;
+
+                    // Simple AABB check
+                    if (!b1.aabb().intersects(b2.aabb())) continue;
+
+                    // Deduplicate using PairKey
+                    const pair_key = PairKey.init(b1, b2);
+                    // Hash the struct
+                    const k = @as(u64, pair_key.a) +% (@as(u64, pair_key.b) *% 0x9e3779b97f4a7c15);
+
+                    const res = try self.pair_set.getOrPut(k);
+                    if (!res.found_existing) {
+                        try self.pairs.append(self.alloc, .{ .a = b1, .b = b2 });
                     }
                 }
             }
