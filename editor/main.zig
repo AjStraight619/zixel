@@ -6,7 +6,6 @@ const Engine = zixel.Engine;
 /// Standalone Zixel Editor
 /// This runs the engine with no scene, just the editor overlay.
 /// Use this for creating new scenes from scratch.
-///
 /// For editing scenes that have code, run your game with:
 ///   zig build run -Deditor=true
 pub fn main() !void {
