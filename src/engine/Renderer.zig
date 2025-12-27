@@ -6,7 +6,7 @@ const sglue = sokol.glue;
 const slog = sokol.log;
 const sapp = sokol.app;
 
-pub const Renderer = @This();
+const Renderer = @This();
 
 pub const Color = struct {
     r: f32 = 1,
@@ -26,12 +26,18 @@ pub const Color = struct {
 
 clear_color: Color = .{ .r = 0.1, .g = 0.1, .b = 0.15, .a = 1 },
 
-pub fn init(self: *Renderer) void {
+/// DO NOT MODIFY THIS VARIABLE
+_owns_pass: bool = true,
+
+pub fn init(self: *Renderer, setup_gfx: bool) void {
     _ = self;
-    sg.setup(.{
-        .environment = sglue.environment(),
-        .logger = .{ .func = slog.func },
-    });
+
+    if (setup_gfx) {
+        sg.setup(.{
+            .environment = sglue.environment(),
+            .logger = .{ .func = slog.func },
+        });
+    }
     sgl.setup(.{
         .logger = .{ .func = slog.func },
     });
@@ -45,42 +51,51 @@ pub fn shutdown(self: *Renderer) void {
 
 pub fn beginFrame(self: *Renderer) void {
     // Set up 2D orthographic projection (0,0 at top-left)
+
+    self.setupMatrices();
+
+    if (self._owns_pass) {
+        sg.beginPass(.{
+            .action = .{
+                .colors = .{
+                    .{
+                        .load_action = .CLEAR,
+                        .clear_value = .{
+                            .r = self.clear_color.r,
+                            .g = self.clear_color.g,
+                            .b = self.clear_color.b,
+                            .a = self.clear_color.a,
+                        },
+                    },
+                    .{},
+                    .{},
+                    .{},
+                    .{},
+                    .{},
+                    .{},
+                    .{},
+                },
+            },
+            .swapchain = sglue.swapchain(),
+        });
+    }
+}
+
+fn setupMatrices(_: *Renderer) void {
     sgl.defaults();
     sgl.matrixModeProjection();
     sgl.loadIdentity();
     sgl.ortho(0, sapp.widthf(), sapp.heightf(), 0, -1, 1);
     sgl.matrixModeModelview();
     sgl.loadIdentity();
-
-    sg.beginPass(.{
-        .action = .{
-            .colors = .{
-                .{
-                    .load_action = .CLEAR,
-                    .clear_value = .{
-                        .r = self.clear_color.r,
-                        .g = self.clear_color.g,
-                        .b = self.clear_color.b,
-                        .a = self.clear_color.a,
-                    },
-                },
-                .{},
-                .{},
-                .{},
-                .{},
-                .{},
-                .{},
-                .{},
-            },
-        },
-        .swapchain = sglue.swapchain(),
-    });
 }
 
-pub fn endFrame(_: *Renderer) void {
+pub fn endFrame(self: *Renderer) void {
     sgl.draw();
-    sg.endPass();
-    sg.commit();
+    if (self._owns_pass) {
+        sg.endPass();
+        sg.commit();
+    }
 }
 
 pub fn drawRect(self: *Renderer, x: f32, y: f32, w: f32, h: f32, color: Color) void {
@@ -175,4 +190,12 @@ pub fn drawCircle(self: *Renderer, cx: f32, cy: f32, radius: f32, color: Color) 
     }
 
     sgl.end();
+}
+
+pub fn beginEmbedded(self: *Renderer) void {
+    self.setupMatrices();
+}
+
+pub fn endEmbedded(_: *Renderer) void {
+    sgl.draw();
 }

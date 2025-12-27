@@ -53,6 +53,5 @@ pub const PhysicsShape = union(enum) {
         };
     }
 
-    // Keep old name as alias for compatibility
     pub const getBoundingRadius = boundingRadius;
 };
