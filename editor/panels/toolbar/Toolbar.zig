@@ -1,17 +1,24 @@
 const std = @import("std");
 const ig = @import("cimgui");
-const Editor = @import("../Editor.zig");
+const Editor = @import("../../Editor.zig");
 const sapp = @import("sokol").app;
+const new_scene = @import("new_scene.zig");
+
+var new_scene_dialog = new_scene.NewSceneDialog.init();
 
 pub fn draw(editor: *Editor, is_playing: *bool) void {
     if (ig.igBeginMainMenuBar()) {
         if (ig.igBeginMenu("File")) {
-            if (ig.igMenuItem("New Scene")) editor.log("New Scene");
+            if (ig.igMenuItem("New Scene")) {
+                new_scene_dialog.open();
+            }
             if (ig.igMenuItem("Save Scene")) editor.log("Saved");
             ig.igSeparator();
             if (ig.igMenuItem("Exit")) sapp.requestQuit();
             ig.igEndMenu();
         }
+
+        new_scene_dialog.draw();
 
         if (ig.igBeginMenu("View")) {
             if (ig.igMenuItem("Hierarchy")) {

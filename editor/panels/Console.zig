@@ -9,16 +9,14 @@ pub fn draw(editor: *Editor) void {
     ig.igSetNextWindowSize(.{ .x = 600, .y = 150 }, ig.ImGuiCond_FirstUseEver);
 
     if (ig.igBegin("Console", &editor.show_console, 0)) {
-        // FIXED: Only passing the label
         if (ig.igButton("Clear")) {
             editor.clearLog();
         }
         ig.igSeparator();
 
-        if (ig.igBeginChild("ScrollingRegion", .{ .x = 0, .y = 0 }, 0, 0)) {
-            for (editor.console_lines.items) |line| {
-                ig.igTextUnformatted(line.ptr);
-            }
+        _ = ig.igBeginChild("ScrollingRegion", .{ .x = 0, .y = 0 }, 0, 0);
+        for (editor.console_lines.items) |line| {
+            ig.igTextUnformatted(line.ptr);
         }
         ig.igEndChild();
     }

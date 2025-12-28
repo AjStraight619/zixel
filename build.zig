@@ -101,7 +101,6 @@ pub fn build(b: *std.Build) !void {
     const run_editor_cmd = b.addRunArtifact(editor_exe);
     run_editor_step.dependOn(&run_editor_cmd.step);
 
-    // 3. The CLI
     const cli_exe = b.addExecutable(.{
         .name = "zixel",
         .root_module = b.createModule(.{
@@ -116,11 +115,11 @@ pub fn build(b: *std.Build) !void {
 
     const run_cli_step = b.step("cli", "Run the Zixel CLI");
     const run_cli_cmd = b.addRunArtifact(cli_exe);
+    if (b.args) |args| {
+        run_editor_cmd.addArgs(args);
+    }
     run_cli_step.dependOn(&run_cli_cmd.step);
 
-    // -------------------------------------------------------------------------
-    // SAMPLES
-    // -------------------------------------------------------------------------
     const Sample = struct {
         exe_name: []const u8,
         file: []const u8,

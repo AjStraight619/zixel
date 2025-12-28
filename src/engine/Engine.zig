@@ -17,6 +17,7 @@ pub const Config = struct {
     window: Window.Config = .{},
     physics: World.Config = .{},
     time: Time.Config = .{},
+    game_dir: ?[]const u8 = null,
 };
 
 alloc: std.mem.Allocator,
@@ -26,6 +27,8 @@ input: Input,
 renderer: Renderer,
 scene: ?Scene = null,
 cfg: Config,
+
+game_dir: ?[]const u8 = null,
 
 /// Initializes engine systems.
 pub fn init(alloc: std.mem.Allocator, cfg: Config) !Engine {
@@ -37,6 +40,7 @@ pub fn init(alloc: std.mem.Allocator, cfg: Config) !Engine {
         .renderer = .{},
         .scene = null,
         .cfg = cfg,
+        .game_dir = cfg.game_dir,
     };
 }
 

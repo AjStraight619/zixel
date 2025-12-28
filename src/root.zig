@@ -7,6 +7,11 @@ pub const Renderable = @import("engine/Renderable.zig");
 pub const Scene = @import("engine/Scene.zig");
 pub const Sprite = @import("engine/Sprite.zig");
 
+// Entity system
+pub const Entity = @import("engine/Entity.zig").Entity;
+pub const EntityDef = @import("engine/Entity.zig").EntityDef;
+pub const EntityHandle = @import("engine/Entity.zig").EntityHandle;
+
 // Core (pure libs / algorithms)
 pub const core = struct {
     pub const nav = struct {
@@ -22,7 +27,6 @@ pub const physics = struct {
     pub const Body = @import("physics/body.zig").Body;
     pub const BodyKind = @import("physics/body.zig").BodyKind;
     pub const BodyOptions = @import("physics/body.zig").BodyOptions;
-    pub const BodyHandle = @import("physics/handle.zig").BodyHandle;
     pub const PhysicsShape = @import("math/shapes.zig").PhysicsShape;
     pub const collision = @import("physics/collision.zig");
     pub const response = @import("physics/response.zig");
@@ -47,7 +51,7 @@ pub const Vec2 = math.Vec2;
 pub const Color = Renderer.Color;
 pub const World = physics.World;
 pub const Body = physics.Body;
-pub const BodyHandle = physics.BodyHandle;
+pub const BodyKind = physics.BodyKind;
 pub const PhysicsShape = physics.PhysicsShape;
 pub const Key = Input.Key;
 pub const MouseButton = Input.MouseButton;

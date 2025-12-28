@@ -1,6 +1,6 @@
 const std = @import("std");
 const World = @import("../physics/world.zig");
-const BodyHandle = World.BodyHandle;
+const EntityHandle = World.EntityHandle;
 const Renderer = @import("Renderer.zig");
 const Color = Renderer.Color;
 const Vec2 = @import("../math/vec2.zig");
@@ -11,18 +11,18 @@ const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
 /// If not linked, uses its own position and size.
 pub const Sprite = @This();
 
-// Physics linkage (optional)
-handle: ?BodyHandle = null,
+// Entity linkage (optional)
+handle: ?EntityHandle = null,
 
-// Used when no body is attached (or as offset from body)
+// Used when no entity is attached (or as offset from entity)
 position: Vec2 = Vec2.zero,
 width: f32 = 0,
 height: f32 = 0,
 
 color: Color,
 
-/// Create a sprite linked to a physics body (dimensions come from shape)
-pub fn fromBody(handle: BodyHandle, color: Color) Sprite {
+/// Create a sprite linked to an entity (dimensions come from body shape)
+pub fn fromBody(handle: EntityHandle, color: Color) Sprite {
     return .{
         .handle = handle,
         .color = color,
@@ -42,15 +42,14 @@ pub fn fromRect(x: f32, y: f32, w: f32, h: f32, color: Color) Sprite {
 /// Render the sprite
 pub fn render(self: *const Sprite, world: *const World, renderer: *Renderer) void {
     if (self.handle) |h| {
-        // Linked to physics body - render based on shape type
-        if (world.getBodyConst(h)) |body| {
+        // Linked to entity - render based on body shape type
+        if (world.getConst(h)) |entity| {
+            const body = &entity.body;
             switch (body.shape) {
                 .circle => |c| {
-                    // Circle: position is center
                     renderer.drawCircle(body.position.x, body.position.y, c.radius, self.color);
                 },
                 .rectangle => |r| {
-                    // Rectangle: use rotated rect (handles rotation=0 fine too)
                     renderer.drawRotatedRect(body.position.x, body.position.y, r.width, r.height, body.rotation, self.color);
                 },
             }

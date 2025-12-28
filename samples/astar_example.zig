@@ -3,9 +3,10 @@ const zixel = @import("zixel_new");
 const Allocator = std.mem.Allocator;
 
 const Engine = zixel.Engine;
-const Sprite = zixel.Sprite;
 const Vec2 = zixel.Vec2;
 const Color = zixel.Color;
+const PhysicsShape = zixel.PhysicsShape;
+const Entity = zixel.Entity;
 
 const Nav = zixel.core.nav.Nav;
 const Grid = zixel.core.nav.Grid;
@@ -17,9 +18,6 @@ pub const NavMazeScene = struct {
 
     ctx: Engine.Ctx,
     nav: Nav,
-    sprites: std.ArrayList(Sprite),
-
-    agent: ?zixel.BodyHandle = null,
     wall_thickness: f32 = 8.0,
     rng: std.Random,
 
@@ -37,8 +35,6 @@ pub const NavMazeScene = struct {
         var scene = NavMazeScene{
             .ctx = ctx,
             .nav = try Nav.init(ctx.alloc, grid_config),
-            .sprites = .empty,
-            .agent = null,
             .rng = prng.random(),
         };
 
@@ -50,16 +46,20 @@ pub const NavMazeScene = struct {
         return &self.nav.grid;
     }
 
+    fn getAgentHandle(self: *NavMazeScene) ?zixel.EntityHandle {
+        // Get handle by looking up in name index
+        if (self.ctx.world.*.name_index.get("agent")) |h| {
+            return h;
+        }
+        return null;
+    }
+
     pub fn update(self: *NavMazeScene, dt: f32) void {
         // Click to move
         if (self.ctx.input.isMousePressed(.left)) {
             const p = self.ctx.input.mousePosition();
-            std.debug.print("Mouse position: ({}, {})\n", .{ p.x, p.y });
-            if (self.agent) |h| {
+            if (self.getAgentHandle()) |h| {
                 self.nav.setTargetWorld(h, Vec2.init(p.x, p.y));
-                const body = self.ctx.world.getBody(h).?;
-                const body_kind = body.kind;
-                std.debug.print("Body kind: {}\n", .{body_kind});
             }
         }
 
@@ -78,10 +78,10 @@ pub const NavMazeScene = struct {
         self.nav.update(self.ctx.world, dt);
 
         // Handle arrival
-        if (self.agent) |h| {
+        if (self.getAgentHandle()) |h| {
             if (self.nav.hasArrived(h)) {
-                if (self.ctx.world.getBody(h)) |body| {
-                    body.velocity = Vec2.zero;
+                if (self.ctx.world.*.getByName("agent")) |agent| {
+                    agent.body.velocity = Vec2.zero;
                 }
                 self.nav.clearTarget(h);
             }
@@ -89,12 +89,11 @@ pub const NavMazeScene = struct {
     }
 
     pub fn render(self: *NavMazeScene) void {
-        for (self.sprites.items) |*s| {
-            s.render(self.ctx.world, self.ctx.renderer);
-        }
+        // World renders all entities
+        self.ctx.world.*.renderAll(self.ctx.renderer);
 
         // Draw path dots
-        if (self.agent) |h| {
+        if (self.getAgentHandle()) |h| {
             if (self.nav.getPath(h)) |cells| {
                 for (cells) |idx| {
                     const wp = self.nav.idxToWorldCenter(idx);
@@ -105,15 +104,13 @@ pub const NavMazeScene = struct {
     }
 
     pub fn deinit(self: *NavMazeScene, alloc: Allocator) void {
-        self.sprites.deinit(alloc);
+        self.ctx.world.*.removeByOwner(.{ .scene = name });
         self.nav.deinit();
         alloc.destroy(self);
     }
 
     fn rebuildMaze(self: *NavMazeScene) !void {
-        self.ctx.world.clearBodies();
-        self.sprites.clearRetainingCapacity();
-        self.agent = null;
+        self.ctx.world.*.removeByOwner(.{ .scene = name });
 
         if (self.nav.grid.edges_h == null) {
             try self.nav.grid.initEdges(self.ctx.alloc);
@@ -126,7 +123,7 @@ pub const NavMazeScene = struct {
 
         try self.buildLevel();
 
-        if (self.agent) |h| {
+        if (self.getAgentHandle()) |h| {
             _ = self.nav.ensureAgent(h);
             self.nav.setAgentParams(h, .{
                 .speed = 150,
@@ -145,13 +142,19 @@ pub const NavMazeScene = struct {
         try self.spawnMazeWalls(wall_color);
 
         const start = self.cellCenter(0, 0);
-        const agent = try self.ctx.world.addDynamicCircle(start.x, start.y, 8.0, .{
-            .mass = 1.0,
-            .friction = 0.1,
-            .restitution = 0.0,
+        _ = try self.ctx.world.*.spawn(.{
+            .name = "agent",
+            .owner = .{ .scene = name },
+            .position = start,
+            .body = .{
+                .kind = .dynamic,
+                .shape = PhysicsShape.circ(8.0),
+                .mass = 1.0,
+                .friction = 0.1,
+                .restitution = 0.0,
+            },
+            .sprite = .{ .color = agent_color },
         });
-        self.agent = agent;
-        try self.sprites.append(self.ctx.alloc, Sprite.fromBody(agent, agent_color));
     }
 
     fn spawnDebugFrame(self: *NavMazeScene, c: Color) !void {
@@ -234,8 +237,12 @@ pub const NavMazeScene = struct {
     }
 
     fn spawnWallRect(self: *NavMazeScene, cx: f32, cy: f32, w: f32, h: f32, wall_color: Color) !void {
-        const wall = try self.ctx.world.addStaticRect(cx, cy, w, h, .{});
-        try self.sprites.append(self.ctx.alloc, Sprite.fromBody(wall, wall_color));
+        _ = try self.ctx.world.*.spawn(.{
+            .owner = .{ .scene = name },
+            .position = Vec2.init(cx, cy),
+            .body = .{ .kind = .static, .shape = PhysicsShape.rect(w, h) },
+            .sprite = .{ .color = wall_color },
+        });
     }
 
     fn generateMazeDFS(self: *NavMazeScene, cells: []Cell) void {

@@ -3,16 +3,16 @@ const sokol = @import("sokol");
 const sglue = sokol.glue;
 const simgui = sokol.imgui;
 const zixel = @import("zixel_new");
+const Allocator = std.mem.Allocator;
 
 const Editor = @import("Editor.zig");
+const Project = @import("project.zig").Project;
 
-// Import Panels
-const Toolbar = @import("panels/Toolbar.zig");
+const Toolbar = @import("panels/toolbar/Toolbar.zig");
 const Hierarchy = @import("panels/Hierarchy.zig");
 const Inspector = @import("panels/Inspector.zig");
 const Console = @import("panels/Console.zig");
 
-// Global Application Container
 const EditorApp = struct {
     engine: zixel.Engine,
     editor: Editor,
@@ -30,15 +30,29 @@ fn onInit() callconv(.c) void {
 
     app.editor = Editor.init(std.heap.c_allocator);
 
+    var game_dir: []const u8 = ".";
+
+    if (std.process.argsAlloc(std.heap.c_allocator)) |args| {
+        if (args.len > 1) {
+            game_dir = args[1];
+        }
+    } else |err| {
+        std.debug.print("Warning: Could not parse arguments: {}\n", .{err});
+    }
+
+    Project.scaffold(std.heap.c_allocator, game_dir) catch |err| {
+        std.debug.panic("Failed to scaffold project directory '{s}': {}\n", .{ game_dir, err });
+    };
+
     app.engine = zixel.Engine.init(std.heap.c_allocator, .{
         .window = .{ .title = "Viewport", .width = 800, .height = 600 },
         .physics = .{ .debug_logging = true },
-    }) catch unreachable;
+        .game_dir = game_dir,
+    }) catch |err| {
+        std.debug.panic("Failed to initialize Engine: {}\n", .{err});
+    };
 
-    // Editor owns gfx
     app.engine.renderer.init(false);
-
-    //  Tells the Engine "Don't clear the screen/start a pass, I'm doing it."
     app.engine.renderer._owns_pass = false;
 
     app.editor.world = &app.engine.world;
@@ -48,7 +62,6 @@ fn onInit() callconv(.c) void {
 fn onFrame() callconv(.c) void {
     const dt = sokol.app.frameDuration();
 
-    // 1. Begin UI Frame
     simgui.newFrame(.{
         .width = sokol.app.width(),
         .height = sokol.app.height(),
@@ -61,13 +74,10 @@ fn onFrame() callconv(.c) void {
     }
 
     var pass_action = sokol.gfx.PassAction{};
-    // Clear background to dark gray
     pass_action.colors[0] = .{ .load_action = .CLEAR, .clear_value = .{ .r = 0.1, .g = 0.1, .b = 0.1, .a = 1 } };
 
-    // Editor starts the Main Pass
     sokol.gfx.beginPass(.{ .action = pass_action, .swapchain = sglue.swapchain() });
 
-    // Since _owns_pass = false, this effectively just draws the sprites without clearing
     app.engine.render();
 
     Toolbar.draw(&app.editor, &app.is_playing);
@@ -77,16 +87,12 @@ fn onFrame() callconv(.c) void {
 
     simgui.render();
 
-    // Editor ends the Main Pass
     sokol.gfx.endPass();
     sokol.gfx.commit();
 }
 
 fn onEvent(e: [*c]const sokol.app.Event) callconv(.c) void {
-    // UI gets priority
     if (simgui.handleEvent(e.*)) return;
-
-    // Engine gets seconds
     app.engine.input.handleEvent(e);
 }
 

@@ -12,12 +12,23 @@ pub fn draw(editor: *Editor) void {
         if (editor.selected_entity) |idx| {
             if (editor.world) |world| {
                 if (idx < world.slots.items.len and world.slots.items[idx].alive) {
-                    const body = &world.slots.items[idx].body;
+                    const entity = &world.slots.items[idx].entity;
+                    const body = &entity.body;
 
-                    ig.igText("Entity ID: %d", @as(c_int, @intCast(idx)));
+                    // Show name if it has one
+                    if (entity.name) |n| {
+                        ig.igText("Name: %s", n.ptr);
+                    } else {
+                        ig.igText("Entity ID: %d", @as(c_int, @intCast(idx)));
+                    }
+
+                    switch (entity.owner) {
+                        .none => ig.igTextDisabled("Owner: persistent"),
+                        .scene => |s| ig.igText("Owner: %s", s.ptr),
+                    }
+
                     ig.igSeparator();
 
-                    // FIXED: Changed function name to igCollapsingHeader
                     if (ig.igCollapsingHeader("Transform", ig.ImGuiTreeNodeFlags_DefaultOpen)) {
                         _ = ig.igDragFloat("X", &body.position.x);
                         _ = ig.igDragFloat("Y", &body.position.y);
@@ -28,6 +39,18 @@ pub fn draw(editor: *Editor) void {
                         ig.igText("Mass: %.2f", body.mass);
                         _ = ig.igDragFloat("Friction", &body.friction);
                         _ = ig.igDragFloat("Restitution", &body.restitution);
+                    }
+
+                    if (entity.sprite) |*sprite| {
+                        if (ig.igCollapsingHeader("Sprite", ig.ImGuiTreeNodeFlags_DefaultOpen)) {
+                            var col: [4]f32 = .{ sprite.color.r, sprite.color.g, sprite.color.b, sprite.color.a };
+                            if (ig.igColorEdit4("Color", &col, 0)) {
+                                sprite.color.r = col[0];
+                                sprite.color.g = col[1];
+                                sprite.color.b = col[2];
+                                sprite.color.a = col[3];
+                            }
+                        }
                     }
                 } else {
                     editor.selected_entity = null;

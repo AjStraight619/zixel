@@ -5,7 +5,7 @@ const Grid = @import("Grid.zig");
 const Astar = @import("astar.zig");
 
 const World = @import("../../physics/world.zig");
-const BodyHandle = World.BodyHandle;
+const EntityHandle = World.EntityHandle;
 const Body = @import("../../physics/body.zig").Body;
 
 const Vec2 = @import("../../math/vec2.zig");
@@ -17,7 +17,7 @@ alloc: Allocator,
 grid: Grid,
 scratch: Astar.Scratch,
 
-agents: std.AutoHashMap(BodyHandle, AgentState),
+agents: std.AutoHashMap(EntityHandle, AgentState),
 
 pub const Config = struct {
     cell_size: f32 = 24,
@@ -63,7 +63,7 @@ pub fn init(alloc: Allocator, cfg: Config) !Nav {
     );
 
     const scratch = try Astar.Scratch.init(alloc, grid.cellCount());
-    const agents = std.AutoHashMap(BodyHandle, AgentState).init(alloc);
+    const agents = std.AutoHashMap(EntityHandle, AgentState).init(alloc);
 
     return .{
         .alloc = alloc,
@@ -138,25 +138,25 @@ pub fn rebuildBlockedFromWorld(self: *Nav, world: *const World) void {
 // Agent API (engine-like)
 // -------------------------------------------------------------------------
 
-pub fn ensureAgent(self: *Nav, handle: BodyHandle) *AgentState {
+pub fn ensureAgent(self: *Nav, handle: EntityHandle) *AgentState {
     const gop = self.agents.getOrPut(handle) catch unreachable;
     if (!gop.found_existing) gop.value_ptr.* = .{};
     return gop.value_ptr;
 }
 
-pub fn removeAgent(self: *Nav, handle: BodyHandle) void {
+pub fn removeAgent(self: *Nav, handle: EntityHandle) void {
     if (self.agents.fetchRemove(handle)) |kv| {
         var st = kv.value;
         st.path.deinit(self.alloc);
     }
 }
 
-pub fn setAgentParams(self: *Nav, handle: BodyHandle, params: AgentParams) void {
+pub fn setAgentParams(self: *Nav, handle: EntityHandle, params: AgentParams) void {
     var st = self.ensureAgent(handle);
     st.params = params;
 }
 
-pub fn clearTarget(self: *Nav, handle: BodyHandle) void {
+pub fn clearTarget(self: *Nav, handle: EntityHandle) void {
     var st = self.ensureAgent(handle);
     st.target_idx = null;
     st.path.clearRetainingCapacity();
@@ -165,7 +165,7 @@ pub fn clearTarget(self: *Nav, handle: BodyHandle) void {
 }
 
 /// Set goal from world coords (mouse click, AI destination, etc.)
-pub fn setTargetWorld(self: *Nav, handle: BodyHandle, target: Vec2) void {
+pub fn setTargetWorld(self: *Nav, handle: EntityHandle, target: Vec2) void {
     var st = self.ensureAgent(handle);
 
     const goal = self.worldToIdx(target.x, target.y) orelse {
@@ -181,7 +181,7 @@ pub fn setTargetWorld(self: *Nav, handle: BodyHandle, target: Vec2) void {
     st.arrived = false; // Reset arrived flag for new target
 }
 
-pub fn getPath(self: *const Nav, handle: BodyHandle) ?[]const u32 {
+pub fn getPath(self: *const Nav, handle: EntityHandle) ?[]const u32 {
     const st = self.agents.getPtr(handle) orelse return null;
     return st.path.items;
 }
@@ -189,19 +189,19 @@ pub fn getPath(self: *const Nav, handle: BodyHandle) ?[]const u32 {
 /// Check if agent has arrived at its goal.
 /// User should handle this (e.g., stop velocity, trigger action).
 /// Calling clearTarget() or setTargetWorld() will reset this.
-pub fn hasArrived(self: *const Nav, handle: BodyHandle) bool {
+pub fn hasArrived(self: *const Nav, handle: EntityHandle) bool {
     const st = self.agents.getPtr(handle) orelse return false;
     return st.arrived;
 }
 
 /// Check if agent is actively navigating (has a target and hasn't arrived)
-pub fn isNavigating(self: *const Nav, handle: BodyHandle) bool {
+pub fn isNavigating(self: *const Nav, handle: EntityHandle) bool {
     const st = self.agents.getPtr(handle) orelse return false;
     return st.target_idx != null and !st.arrived;
 }
 
 /// Check if agent has a target set (may or may not have arrived)
-pub fn hasTarget(self: *const Nav, handle: BodyHandle) bool {
+pub fn hasTarget(self: *const Nav, handle: EntityHandle) bool {
     const st = self.agents.getPtr(handle) orelse return false;
     return st.target_idx != null;
 }
@@ -215,9 +215,10 @@ pub fn update(self: *Nav, world: *World, dt: f32) void {
     }
 }
 
-fn updateOne(self: *Nav, world: *World, handle: BodyHandle, dt: f32) void {
+fn updateOne(self: *Nav, world: *World, handle: EntityHandle, dt: f32) void {
     var st = self.agents.getPtr(handle) orelse return;
-    const body = world.getBody(handle) orelse return;
+    const entity = world.get(handle) orelse return;
+    const body = &entity.body;
 
     const goal = st.target_idx orelse return; // No target, nothing to do
 

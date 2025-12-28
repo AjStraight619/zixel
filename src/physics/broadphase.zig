@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Body = @import("body.zig").Body;
-const BodySlot = @import("world.zig").BodySlot;
+const EntitySlot = @import("world.zig").EntitySlot;
 
 /// Unique key for deduplicating pairs
 const PairKey = struct {
@@ -68,9 +68,9 @@ pub const SpatialHash = struct {
         return @intFromFloat(@floor(val * self.inv_cell_size));
     }
 
-    /// Rebuilds the grid and collects all unique collision pairs.
-    /// Call this ONCE per frame.
-    pub fn update(self: *SpatialHash, slots: []BodySlot) !void {
+    /// Rebuilds the grid and collects all unique collision pairs from EntitySlots.
+    /// Alias: update
+    pub fn updateFromEntities(self: *SpatialHash, slots: []EntitySlot) !void {
         var it = self.cells.valueIterator();
         while (it.next()) |list| list.clearRetainingCapacity();
         self.pairs.clearRetainingCapacity();
@@ -78,9 +78,8 @@ pub const SpatialHash = struct {
 
         for (slots) |*slot| {
             if (!slot.alive) continue;
-            const body = &slot.body;
+            const body = &slot.entity.body;
 
-            // Compute AABB cover
             const aabb = body.aabb();
             const min_x = self.getCellCoord(aabb.min.x);
             const max_x = self.getCellCoord(aabb.max.x);
@@ -101,6 +100,10 @@ pub const SpatialHash = struct {
             }
         }
 
+        self.collectPairs();
+    }
+
+    fn collectPairs(self: *SpatialHash) void {
         var cell_it = self.cells.valueIterator();
         while (cell_it.next()) |list| {
             const items = list.items;
@@ -108,20 +111,15 @@ pub const SpatialHash = struct {
 
             for (items, 0..) |b1, i| {
                 for (items[i + 1 ..]) |b2| {
-                    // Ignore Static-Static
                     if (b1.kind != .dynamic and b2.kind != .dynamic) continue;
-
-                    // Simple AABB check
                     if (!b1.aabb().intersects(b2.aabb())) continue;
 
-                    // Deduplicate using PairKey
                     const pair_key = PairKey.init(b1, b2);
-                    // Hash the struct
                     const k = @as(u64, pair_key.a) +% (@as(u64, pair_key.b) *% 0x9e3779b97f4a7c15);
 
-                    const res = try self.pair_set.getOrPut(k);
+                    const res = self.pair_set.getOrPut(k) catch continue;
                     if (!res.found_existing) {
-                        try self.pairs.append(self.alloc, .{ .a = b1, .b = b2 });
+                        self.pairs.append(self.alloc, .{ .a = b1, .b = b2 }) catch continue;
                     }
                 }
             }

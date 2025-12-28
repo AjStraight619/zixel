@@ -16,7 +16,10 @@ pub fn draw(editor: *Editor) void {
                 if (!slot.alive) continue;
 
                 var buf: [64]u8 = undefined;
-                const label = std.fmt.bufPrint(&buf, "Entity {d}\x00", .{i}) catch "Entity\x00";
+                const label = if (slot.entity.name) |n|
+                    std.fmt.bufPrint(&buf, "{s}\x00", .{n}) catch "Entity\x00"
+                else
+                    std.fmt.bufPrint(&buf, "Entity {d}\x00", .{i}) catch "Entity\x00";
 
                 if (ig.igSelectable(label.ptr)) {
                     editor.selected_entity = i;
