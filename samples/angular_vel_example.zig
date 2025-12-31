@@ -30,7 +30,7 @@ pub const AngularRectsScene = struct {
         const extra_color = Color{ .r = 0.8, .g = 0.7, .b = 0.3, .a = 1 };
 
         // Ground
-        _ = try self.ctx.world.*.spawn(.{
+        _ = try self.ctx.world.spawn(.{
             .name = "ground",
             .owner = .{ .scene = name },
             .position = Vec2.init(400, 585),
@@ -39,7 +39,7 @@ pub const AngularRectsScene = struct {
         });
 
         // Left wall
-        _ = try self.ctx.world.*.spawn(.{
+        _ = try self.ctx.world.spawn(.{
             .owner = .{ .scene = name },
             .position = Vec2.init(15, 300),
             .body = .{ .kind = .static, .shape = PhysicsShape.rect(30, 600) },
@@ -47,7 +47,7 @@ pub const AngularRectsScene = struct {
         });
 
         // Right wall
-        _ = try self.ctx.world.*.spawn(.{
+        _ = try self.ctx.world.spawn(.{
             .owner = .{ .scene = name },
             .position = Vec2.init(785, 300),
             .body = .{ .kind = .static, .shape = PhysicsShape.rect(30, 600) },

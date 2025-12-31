@@ -1,0 +1,5 @@
+{
+    "name": "New Project",
+    "version": "0.1.0",
+    "start_scene": "assets/scenes/main.json"
+}

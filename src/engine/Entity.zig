@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const Vec2 = @import("../math/vec2.zig");
 const Color = @import("Renderer.zig").Color;
 const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
@@ -30,7 +31,52 @@ pub const Entity = struct {
 
     pub const SpriteData = struct {
         color: Color = Color.white,
+        texture_path: ?[]const u8 = null,
     };
+
+    /// To serialize an Entity and save to a Scene
+    pub fn toDef(self: Entity, alloc: Allocator) !EntityDef {
+        const name_copy = if (self.name) |n| try alloc.dupe(u8, n) else null;
+
+        const tags_slice = try alloc.alloc([]const u8, self.tags.len);
+
+        for (self.tags, 0..) |tag, i| {
+            tags_slice[i] = try alloc.alloc(u8, tag);
+        }
+
+        const owner_copy: Owner = switch (self.owner) {
+            .none => .none,
+            .scene => |scene_name| .{ .scene = try alloc.dupe(u8, scene_name) },
+        };
+
+        var sprite_copy: ?Entity.SpriteData = null;
+        if (self.sprite) |s| {
+            sprite_copy = .{
+                .color = s.color,
+                .texture_path = if (s.texture_path) |p| try alloc.dupe(u8, p) else null,
+            };
+        }
+
+        const body_def = EntityDef.BodyDef{
+            .kind = self.body.kind,
+            .shape = self.body.shape,
+            .mass = self.body.mass,
+            .friction = self.body.friction,
+            .restitution = self.body.restitution,
+            .velocity = self.body.velocity,
+            .inertia = self.body.inertia,
+        };
+
+        return .{
+            .name = name_copy,
+            .tags = tags_slice,
+            .owner = owner_copy,
+            .position = self.body.position,
+            .rotation = self.body.rotation,
+            .body = body_def,
+            .sprite = sprite_copy,
+        };
+    }
 };
 
 /// Definition for spawning an entity (what you pass to world.spawn)
@@ -72,3 +118,5 @@ pub const EntityHandle = struct {
         return self.index == other.index and self.generation == other.generation;
     }
 };
+
+test "Entity.toDef" {}

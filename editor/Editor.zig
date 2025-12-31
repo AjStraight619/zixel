@@ -11,6 +11,9 @@ world: ?*zixel.World = null,
 
 selected_entity: ?usize = null,
 
+// This now stores the valid absolute path to the project
+game_root_dir: []const u8,
+
 show_scene_view: bool = true,
 show_hierarchy: bool = true,
 show_inspector: bool = true,
@@ -23,21 +26,30 @@ scene_file_path: ?[]const u8 = null,
 entity_defs: std.ArrayList(EntityDef),
 dirty: bool = false,
 
-pub fn init(alloc: Allocator) Editor {
+pub fn init(alloc: Allocator, root_path: []const u8) !Editor {
+    // We duplicate the path because the original string (from main) might be temporary.
+    // The Editor now "owns" this string.
+    const root_copy = try alloc.dupe(u8, root_path);
+
     return .{
         .alloc = alloc,
         .console_lines = .empty,
         .entity_defs = .empty,
+        .game_root_dir = root_copy,
     };
 }
 
 pub fn deinit(self: *Editor) void {
+    // Free the path string we duplicated in init
+    self.alloc.free(self.game_root_dir);
+
     self.console_lines.deinit(self.alloc);
+    // Note: If you add more dynamic arrays (like entity_defs), deinit them here too.
+    self.entity_defs.deinit(self.alloc);
 }
 
 pub fn addEntity(self: *Editor, def: EntityDef) !void {
     // Spawn entity in the world
-    // TODO: Add proper error handling here
     if (self.world) |world| {
         _ = world.spawn(def) catch |err| {
             self.log("Failed to spawn entity: {s}", .{@errorName(err)});
@@ -56,8 +68,10 @@ pub fn updateEntity(self: *Editor, idx: usize, def: EntityDef) void {
 
     // Sync changes to world if entity exists
     if (self.world) |world| {
-        if (def.name) |name| {
-            if (world.getByName(name)) |entity| {
+        // Warning: This assumes the name hasn't changed.
+        // If you change the name in the editor, this might fail to find the old entity.
+        if (def.name) |n| {
+            if (world.getByName(n)) |entity| {
                 entity.body.position = def.position;
                 entity.body.rotation = def.rotation;
                 entity.body.mass = def.body.mass;
@@ -79,10 +93,15 @@ pub fn updateEntity(self: *Editor, idx: usize, def: EntityDef) void {
 }
 
 pub fn log(self: *Editor, msg: []const u8) void {
-    // In a real app, you'd dup this string, but for now just storing the slice
-    self.console_lines.append(self.alloc, msg) catch {};
+    // For a robust log, you should dupe this string, otherwise it points to temporary memory
+    const msg_copy = self.alloc.dupe(u8, msg) catch return;
+    self.console_lines.append(self.alloc, msg_copy) catch {};
 }
 
 pub fn clearLog(self: *Editor) void {
+    // If you dupe strings in log(), you need to free them here before clearing!
+    for (self.console_lines.items) |msg| {
+        self.alloc.free(msg);
+    }
     self.console_lines.clearRetainingCapacity();
 }

@@ -48,8 +48,10 @@ pub const NewSceneDialog = struct {
         }
     }
 
-    pub fn createScene(self: *NewSceneDialog) void {
+    pub fn createScene(self: *NewSceneDialog, game_dir: []const u8) void {
         const name = std.mem.sliceTo(&self.input_buffer, 0);
         std.debug.print("Creating Scene: {s}\n", .{name});
+
+        _ = game_dir;
     }
 };

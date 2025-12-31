@@ -106,13 +106,8 @@ pub fn deinit(self: *World) void {
     self.free_indices.deinit(self.alloc);
 }
 
-// ============================================================================
-// Entity API (the new stuff)
-// ============================================================================
-
 /// Spawn an entity from a definition
 pub fn spawn(self: *World, def: EntityDef) !EntityHandle {
-    // Create the body
     const body = if (def.body) |b| blk: {
         const opts = BodyOptions{
             .rotation = def.rotation,
@@ -141,8 +136,8 @@ pub fn spawn(self: *World, def: EntityDef) !EntityHandle {
     const handle = try self.insertEntity(entity);
 
     // Index by name for fast lookup
-    if (def.name) |name| {
-        try self.name_index.put(name, handle);
+    if (def.name) |n| {
+        try self.name_index.put(n, handle);
     }
 
     return handle;
@@ -204,8 +199,8 @@ pub fn clearAll(self: *World, keep_persistent: bool) void {
 
         if (keep_persistent and slot.entity.owner == .none) continue;
 
-        if (slot.entity.name) |name| {
-            _ = self.name_index.remove(name);
+        if (slot.entity.name) |n| {
+            _ = self.name_index.remove(n);
         }
         slot.alive = false;
         slot.generation +%= 1;
@@ -425,10 +420,6 @@ fn maybeLogDebug(self: *World) void {
         },
     );
 }
-
-// ============================================================================
-// Internal slot management
-// ============================================================================
 
 fn insertEntity(self: *World, entity: Entity) !EntityHandle {
     if (self.free_indices.pop()) |free_index| {
