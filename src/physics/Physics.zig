@@ -104,10 +104,9 @@ fn integrateVelocities(self: *Physics, bodies: anytype, dt: f32) void {
 
         if (body.kind != .dynamic or body.isSleeping()) continue;
 
-        body.applyForce(Vec2{
-            .x = self.cfg.gravity.x * body.mass,
-            .y = self.cfg.gravity.y * body.mass,
-        });
+        // Gravity affects awake bodies without resetting their sleep timers.
+        // Explicit forces use Body.applyForce to wake the body instead.
+        body.acceleration = body.acceleration.add(self.cfg.gravity);
 
         body.velocity = body.velocity.add(body.acceleration.scale(dt));
         body.acceleration = Vec2.zero;
@@ -205,6 +204,13 @@ fn updateSleepingBodies(self: *Physics, bodies: anytype, dt: f32) void {
     var iter = bodies;
     while (iter.next()) |body| {
         if (body.kind != .dynamic or body.isSleeping()) continue;
+
+        // Integrate pending forces before considering the body for sleep, even
+        // when the sleep threshold is shorter than a single physics step.
+        if (body.acceleration.x != 0 or body.acceleration.y != 0 or body.angular_acceleration != 0) {
+            body.sleep_time = 0;
+            continue;
+        }
 
         const v = @sqrt(body.velocity.x * body.velocity.x + body.velocity.y * body.velocity.y);
         const w = @abs(body.angular_velocity);

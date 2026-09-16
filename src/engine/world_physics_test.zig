@@ -2,6 +2,51 @@ const std = @import("std");
 const World = @import("World.zig");
 const Physics = @import("../physics/Physics.zig");
 
+test "force on a sleeping body is integrated once even with immediate sleeping enabled" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{
+        .gravity = .{ .x = 0, .y = 0 },
+        .sleep_time_threshold = 0,
+        .linear_damping = 0,
+    });
+    defer physics.deinit();
+    const handle = try world.addDynamicCircle(0, 0, 1, .{ .mass = 2 });
+    const body = world.getBody(handle).?;
+    body.putToSleep();
+    body.applyForce(.{ .x = 120, .y = 0 });
+    physics.update(world.bodies(), physics.cfg.physics_time_step);
+    try std.testing.expect(!body.isSleeping());
+    try std.testing.expectApproxEqAbs(@as(f32, 1), body.velocity.x, 0.00001);
+    try std.testing.expectApproxEqAbs(physics.cfg.physics_time_step, body.position.x, 0.00001);
+    // Prevent sleeping on the second step so stale force accumulation is visible.
+    physics.cfg.allow_sleeping = false;
+    physics.update(world.bodies(), physics.cfg.physics_time_step);
+    try std.testing.expectApproxEqAbs(@as(f32, 1), body.velocity.x, 0.00001);
+}
+
+test "gravity allows supported bodies to sleep and does not wake them" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{
+        .gravity = .{ .x = 0, .y = 10 },
+        .sleep_time_threshold = 0.05,
+        .contact_slop = 0,
+        .baumgarte_factor = 1,
+    });
+    defer physics.deinit();
+    const handle = try world.addDynamicCircle(0, 0, 1, .{ .restitution = 0 });
+    _ = try world.addStaticRect(0, 2, 100, 2, .{ .restitution = 0 });
+    for (0..30) |_| physics.update(world.bodies(), physics.cfg.physics_time_step);
+    const body = world.getBody(handle).?;
+    try std.testing.expect(body.isSleeping());
+    try std.testing.expectApproxEqAbs(@as(f32, 0), body.position.y, 0.001);
+    const position = body.position;
+    physics.update(world.bodies(), physics.cfg.physics_time_step);
+    try std.testing.expect(body.isSleeping());
+    try std.testing.expectEqual(position, body.position);
+}
+
 test "separated rectangles generate no broadphase pairs on either side of the origin" {
     for ([_]f32{ 128, -640 }) |offset| {
         var world = World.init(std.testing.allocator);

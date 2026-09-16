@@ -97,6 +97,7 @@ fn computeInertia(shape: PhysicsShape, mass: f32) f32 {
 
 pub fn applyForce(self: *Body, force: Vec2) void {
     if (self.kind == .dynamic) {
+        if (force.x != 0 or force.y != 0) self.wakeUp();
         self.acceleration = self.acceleration.add(force.scale(1.0 / self.mass));
     }
 }
@@ -177,5 +178,28 @@ test "rotated rectangle bounds match analytic extents across the origin" {
         try std.testing.expectApproxEqAbs(expected.min.y, actual.min.y, 0.0001);
         try std.testing.expectApproxEqAbs(expected.max.x, actual.max.x, 0.0001);
         try std.testing.expectApproxEqAbs(expected.max.y, actual.max.y, 0.0001);
+    }
+}
+
+test "nonzero force wakes a sleeping dynamic body and resets its sleep timer" {
+    var body = Body.initDynamic(PhysicsShape.circ(1), Vec2.zero, .{ .mass = 2 });
+    body.sleep_time = 10;
+    body.putToSleep();
+    body.applyForce(.{ .x = 0, .y = 6 });
+    try std.testing.expect(!body.isSleeping());
+    try std.testing.expectEqual(@as(f32, 0), body.sleep_time);
+    try std.testing.expectEqual(@as(f32, 3), body.acceleration.y);
+}
+
+test "zero force preserves sleep and forces do not affect infinite-mass bodies" {
+    var body = Body.initDynamic(PhysicsShape.circ(1), Vec2.zero, .{});
+    body.putToSleep();
+    body.applyForce(Vec2.zero);
+    try std.testing.expect(body.isSleeping());
+    var stationary = Body.initStatic(PhysicsShape.circ(1), Vec2.zero, .{});
+    var kinematic = Body.initKinematic(PhysicsShape.circ(1), Vec2.zero, .{});
+    for ([_]*Body{ &stationary, &kinematic }) |other| {
+        other.applyForce(.{ .x = 4, .y = 6 });
+        try std.testing.expectEqual(Vec2.zero, other.acceleration);
     }
 }
