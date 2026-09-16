@@ -10,6 +10,7 @@ pub const Sprite = @import("engine/Sprite.zig");
 // Entity system
 pub const Entity = @import("engine/Entity.zig").Entity;
 pub const EntityDef = @import("engine/Entity.zig").EntityDef;
+pub const OwnedEntityDef = @import("engine/Entity.zig").OwnedEntityDef;
 pub const EntityHandle = @import("engine/Entity.zig").EntityHandle;
 
 // Core (pure libs / algorithms)
@@ -37,6 +38,7 @@ test {
     _ = @import("physics/response.zig");
     _ = @import("physics/narrowphase.zig");
     _ = @import("engine/data.zig");
+    _ = @import("engine/Entity.zig");
     _ = @import("physics/world.zig");
 }
 

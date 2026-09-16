@@ -102,7 +102,8 @@ pub fn deinit(self: *World) void {
     self.free_indices.deinit(self.alloc);
 }
 
-/// Spawn an entity from a definition
+/// Spawn an entity from a borrowed definition. The caller must keep its strings
+/// alive until this entity is removed from the world.
 pub fn spawn(self: *World, def: EntityDef) !EntityHandle {
     const body = if (def.body) |b| blk: {
         const opts = BodyOptions{

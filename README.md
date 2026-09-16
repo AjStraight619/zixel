@@ -38,6 +38,23 @@ The application draws the stateless toolbar; editor state does not import it.
 World and broadphase share `engine/EntitySlot.zig` without importing each other.
 CLI parsing and project creation share `cli/NewArgs.zig`.
 
+## Entity definitions
+
+`EntityDef` borrows its strings, so literals are valid and the definition has no
+`deinit` method. `World.spawn` also borrows those strings; keep their storage alive
+until the entity is removed.
+
+Use `Entity.toDef(allocator)` or `EntityDef.clone(allocator)` for a deep copy:
+
+```zig
+var snapshot = try entity.toDef(allocator);
+defer snapshot.deinit();
+// snapshot.value is the EntityDef used for saving or spawning.
+```
+
+The returned `OwnedEntityDef` owns its storage. Free it once all users of
+`snapshot.value` are finished; do not copy the owner and free it twice.
+
 ## Versions and releases
 
 Use Zixel release tags (such as `v0.1.1`) independently of Zig compiler versions.
