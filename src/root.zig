@@ -34,8 +34,8 @@ pub const physics = struct {
 };
 
 test {
-    // _ = @import("physics/response.zig");
-    // _ = @import("physics/narrowphase.zig");
+    _ = @import("physics/response.zig");
+    _ = @import("physics/narrowphase.zig");
     _ = @import("engine/data.zig");
     _ = @import("physics/world.zig");
 }

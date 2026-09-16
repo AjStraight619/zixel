@@ -237,63 +237,28 @@ test "cross2: basic directions" {
 
 test "applyImpulse: center hit causes no rotation" {
     var body = makeTestDynamicBody(100, 100, 40);
-    var static = makeTestStaticBody(100, 150, 200, 20, 0);
-
-    // NOTE: In applyImpulse, the `impulse` param is what BODY2 receives.
-    // Body1 receives the OPPOSITE. So to push body1 UP, we pass DOWN impulse.
-    const impulse = Vec2.init(0, 100); // body2 gets pushed DOWN, body1 gets pushed UP
-    const contact_at_center = Vec2.init(100, 100);
-
-    applyImpulse(&body, &static, contact_at_center, impulse);
-
-    std.debug.print("\n[TEST] center hit:\n", .{});
-    std.debug.print("  body.velocity = ({d:.1}, {d:.1})\n", .{ body.velocity.x, body.velocity.y });
-    std.debug.print("  body.angular_velocity = {d:.3}\n", .{body.angular_velocity});
-
-    // body1 velocity should decrease (go negative = up)
-    try std.testing.expect(body.velocity.y < 0); // Moving up
-    try std.testing.expectApproxEqAbs(@as(f32, 0.0), body.angular_velocity, 0.001);
+    const contact = Vec2.init(100, 100);
+    // applyImpulse receives the impulse applied to this body directly.
+    applyImpulse(&body, getSolverData(&body, contact), Vec2.init(0, -100));
+    try std.testing.expectApproxEqAbs(@as(f32, -100), body.velocity.y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0), body.angular_velocity, 0.001);
 }
 
-test "applyImpulse: right-side hit - understand the direction" {
+test "applyImpulse: upward hit on right side rotates counterclockwise" {
     var body = makeTestDynamicBody(100, 100, 40);
-    var static = makeTestStaticBody(100, 150, 200, 20, 0);
-
-    // To push body1 UP at the RIGHT side:
-    // - Pass impulse that goes DOWN (body2 gets down, body1 gets up)
-    const impulse = Vec2.init(0, 100); // body2 down, body1 up
-    const contact_right = Vec2.init(120, 100); // Right of body1's center
-
-    applyImpulse(&body, &static, contact_right, impulse);
-
-    std.debug.print("\n[TEST] right-side, body1 pushed UP:\n", .{});
-    std.debug.print("  body.velocity = ({d:.1}, {d:.1})\n", .{ body.velocity.x, body.velocity.y });
-    std.debug.print("  body.angular_velocity = {d:.3}\n", .{body.angular_velocity});
-
-    // Pushing UP on RIGHT side = CCW rotation = negative ω in Y-down coords
-    // r = (20, 0), body1 receives force (0, -100)
-    // torque = r × F = 20 * (-100) - 0 * 0 = -2000 → negative ω
-    try std.testing.expect(body.angular_velocity < 0);
+    const contact = Vec2.init(120, 100);
+    applyImpulse(&body, getSolverData(&body, contact), Vec2.init(0, -100));
+    // r x impulse = 20 * -100, negative rotation in Y-down coordinates.
+    try std.testing.expectApproxEqAbs(@as(f32, -100), body.velocity.y, 0.001);
+    try std.testing.expectApproxEqAbs(-2000 / body.inertia, body.angular_velocity, 0.001);
 }
 
-test "applyImpulse: left-side hit - understand the direction" {
+test "applyImpulse: upward hit on left side rotates clockwise" {
     var body = makeTestDynamicBody(100, 100, 40);
-    var static = makeTestStaticBody(100, 150, 200, 20, 0);
-
-    // To push body1 UP at the LEFT side:
-    const impulse = Vec2.init(0, 100); // body2 down, body1 up
-    const contact_left = Vec2.init(80, 100); // Left of body1's center
-
-    applyImpulse(&body, &static, contact_left, impulse);
-
-    std.debug.print("\n[TEST] left-side, body1 pushed UP:\n", .{});
-    std.debug.print("  body.velocity = ({d:.1}, {d:.1})\n", .{ body.velocity.x, body.velocity.y });
-    std.debug.print("  body.angular_velocity = {d:.3}\n", .{body.angular_velocity});
-
-    // Pushing UP on LEFT side = CW rotation = positive ω
-    // r = (-20, 0), body1 receives force (0, -100)
-    // torque = r × F = (-20) * (-100) - 0 * 0 = +2000 → positive ω
-    try std.testing.expect(body.angular_velocity > 0);
+    const contact = Vec2.init(80, 100);
+    applyImpulse(&body, getSolverData(&body, contact), Vec2.init(0, -100));
+    try std.testing.expectApproxEqAbs(@as(f32, -100), body.velocity.y, 0.001);
+    try std.testing.expectApproxEqAbs(2000 / body.inertia, body.angular_velocity, 0.001);
 }
 
 test "box falling on flat ground: should not spin" {
@@ -319,7 +284,7 @@ test "box falling on flat ground: should not spin" {
     // jn = -(1+e) * vn / k = -(1.5) * (-100) / k = 150 / k
     // impulse = normal * jn = (0, jn) pushing ground down, box up
 
-    _ = resolveNormalImpulse(&box, &ground, manifold, 0.5, 3.0);
+    _ = resolveNormalImpulse(&box, &ground, getSolverData(&box, manifold.point), getSolverData(&ground, manifold.point), manifold, 0.5, 3.0);
 
     std.debug.print("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
@@ -395,7 +360,7 @@ test "off-center contact causes rotation from normal impulse" {
 
     std.debug.print("  before: vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
-    _ = resolveNormalImpulse(&box, &ground, manifold, 0.5, 3.0);
+    _ = resolveNormalImpulse(&box, &ground, getSolverData(&box, manifold.point), getSolverData(&ground, manifold.point), manifold, 0.5, 3.0);
 
     std.debug.print("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
