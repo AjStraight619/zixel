@@ -1,9 +1,9 @@
 const std = @import("std");
-const World = @import("../physics/world.zig");
+const World = @import("../physics/World.zig");
 const EntityHandle = World.EntityHandle;
 const Renderer = @import("Renderer.zig");
 const Color = Renderer.Color;
-const Vec2 = @import("../math/vec2.zig");
+const Vec2 = @import("../math/Vec2.zig");
 const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
 
 /// A sprite that can optionally be linked to a physics body.

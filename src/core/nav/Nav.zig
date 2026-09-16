@@ -2,20 +2,20 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const Grid = @import("Grid.zig");
-const Astar = @import("astar.zig");
+const astar = @import("astar.zig");
 
-const World = @import("../../physics/world.zig");
+const World = @import("../../physics/World.zig");
 const EntityHandle = World.EntityHandle;
-const Body = @import("../../physics/body.zig").Body;
+const Body = @import("../../physics/Body.zig");
 
-const Vec2 = @import("../../math/vec2.zig");
+const Vec2 = @import("../../math/Vec2.zig");
 
 const Nav = @This();
 
 alloc: Allocator,
 
 grid: Grid,
-scratch: Astar.Scratch,
+scratch: astar.Scratch,
 
 agents: std.AutoHashMap(EntityHandle, AgentState),
 
@@ -62,7 +62,7 @@ pub fn init(alloc: Allocator, cfg: Config) !Nav {
         cfg.origin_y,
     );
 
-    const scratch = try Astar.Scratch.init(alloc, grid.cellCount());
+    const scratch = try astar.Scratch.init(alloc, grid.cellCount());
     const agents = std.AutoHashMap(EntityHandle, AgentState).init(alloc);
 
     return .{
@@ -289,7 +289,7 @@ fn repathInternal(self: *Nav, pos: Vec2, goal: u32, st: *AgentState) void {
 
     st.path.clearRetainingCapacity();
 
-    const ok = Astar.findPath(self.alloc, &self.grid, &self.scratch, start, goal, &st.path);
+    const ok = astar.findPath(self.alloc, &self.grid, &self.scratch, start, goal, &st.path);
     if (!ok) {
         std.log.warn("[Nav.repath] A* FAILED to find path from {d} to {d}", .{ start, goal });
         st.path.clearRetainingCapacity();

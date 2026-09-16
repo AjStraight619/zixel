@@ -2,7 +2,7 @@ const std = @import("std");
 const sokol = @import("sokol");
 const sapp = sokol.app;
 
-const Window = @This();
+const window = @This();
 
 pub const Config = struct {
     width: i32 = 1024,

@@ -1,8 +1,8 @@
 const std = @import("std");
-const World = @import("world.zig");
+const World = @import("World.zig");
 const Config = World.Config;
-const Vec2 = @import("../math/vec2.zig");
-const CountingAllocator = @import("../core/allocators/counting_allocator.zig");
+const Vec2 = @import("../math/Vec2.zig");
+const CountingAllocator = @import("../core/allocators/CountingAllocator.zig");
 
 test "benchmark: pressure cooker (mixed shapes)" {
     const raw_alloc = std.testing.allocator;

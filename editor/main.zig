@@ -6,12 +6,12 @@ const zixel = @import("zixel_new");
 const Allocator = std.mem.Allocator;
 
 const Editor = @import("Editor.zig");
-const Toolbar = @import("toolbar/Toolbar.zig").Toolbar;
-const Project = @import("project.zig").Project;
+const toolbar = @import("toolbar/toolbar.zig");
+const project = @import("project.zig");
 
-const Hierarchy = @import("panels/Hierarchy.zig");
-const Inspector = @import("panels/Inspector.zig");
-const Console = @import("panels/Console.zig");
+const hierarchy = @import("panels/hierarchy.zig");
+const inspector = @import("panels/inspector.zig");
+const console = @import("panels/console.zig");
 
 const Zixel = struct {
     engine: zixel.Engine,
@@ -38,7 +38,7 @@ fn onInit() callconv(.c) void {
     }
 
     // We try to create the project structure. If the folder doesn't exist, this makes it.
-    Project.scaffold(std.heap.c_allocator, raw_path) catch |err| {
+    project.scaffold(std.heap.c_allocator, raw_path) catch |err| {
         std.debug.panic("Failed to scaffold project at '{s}': {}\n", .{ raw_path, err });
     };
 
@@ -94,11 +94,11 @@ fn onFrame() callconv(.c) void {
 
     app.engine.render();
 
-    Toolbar.draw(&app.editor, &app.is_playing);
+    toolbar.draw(&app.editor, &app.is_playing);
 
-    Hierarchy.draw(&app.editor);
-    Inspector.draw(&app.editor);
-    Console.draw(&app.editor);
+    hierarchy.draw(&app.editor);
+    inspector.draw(&app.editor);
+    console.draw(&app.editor);
 
     app.editor.drawOverlays();
 

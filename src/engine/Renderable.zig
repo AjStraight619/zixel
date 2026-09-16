@@ -1,5 +1,5 @@
 const std = @import("std");
-const World = @import("../physics/world.zig");
+const World = @import("../physics/World.zig");
 const Renderer = @import("Renderer.zig");
 
 const Allocator = std.mem.Allocator;
@@ -46,19 +46,19 @@ pub fn init(ptr: anytype) Renderable {
 
 fn vtableFor(comptime T: type) *const VTable {
     const Impl = struct {
-        fn v_render(ctx: *anyopaque, world: *World, renderer: *Renderer) void {
+        fn vRender(ctx: *anyopaque, world: *World, renderer: *Renderer) void {
             const self: *T = @ptrCast(@alignCast(ctx));
             T.render(self, world, renderer);
         }
 
-        fn v_deinit(ctx: *anyopaque, alloc: Allocator) void {
+        fn vDeinit(ctx: *anyopaque, alloc: Allocator) void {
             const self: *T = @ptrCast(@alignCast(ctx));
             T.deinit(self, alloc);
         }
 
         pub const vtable = VTable{
-            .render = v_render,
-            .deinit = v_deinit,
+            .render = vRender,
+            .deinit = vDeinit,
         };
     };
 

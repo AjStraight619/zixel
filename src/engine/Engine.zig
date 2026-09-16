@@ -5,16 +5,16 @@ const slog = sokol.log;
 
 const Time = @import("Time.zig");
 const Scene = @import("Scene.zig");
-const Window = @import("Window.zig");
+const window = @import("window.zig");
 const Renderer = @import("Renderer.zig");
 const Input = @import("Input.zig");
-const World = @import("../physics/world.zig");
-pub const Ctx = @import("Ctx.zig").Ctx;
+const World = @import("../physics/World.zig");
+pub const Ctx = @import("Ctx.zig");
 
 pub const Engine = @This();
 
 pub const Config = struct {
-    window: Window.Config = .{},
+    window: window.Config = .{},
     physics: World.Config = .{},
     time: Time.Config = .{},
     game_dir: ?[]const u8 = null,

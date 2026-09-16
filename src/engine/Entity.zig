@@ -1,61 +1,61 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Vec2 = @import("../math/vec2.zig");
+const Vec2 = @import("../math/Vec2.zig");
 const Color = @import("Renderer.zig").Color;
 const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
-const body_mod = @import("../physics/body.zig");
-const Body = body_mod.Body;
+const body_mod = @import("../physics/Body.zig");
+const Body = body_mod;
 const BodyKind = body_mod.BodyKind;
 const BodyOptions = body_mod.BodyOptions;
 
-pub const Entity = struct {
-    name: ?[]const u8 = null,
+const Entity = @This();
 
-    tags: []const []const u8 = &.{},
+name: ?[]const u8 = null,
 
-    /// Who owns this entity - determines cleanup behavior
-    owner: Owner = .none,
+tags: []const []const u8 = &.{},
 
-    /// Physics body (handles position, velocity, collision)
-    body: Body,
+/// Who owns this entity - determines cleanup behavior
+owner: Owner = .none,
 
-    /// Optional visual
-    sprite: ?SpriteData = null,
+/// Physics body (handles position, velocity, collision)
+body: Body,
 
-    pub const Owner = union(enum) {
-        /// Persistent - survives scene changes
-        none,
-        /// Owned by a scene - removed when scene deinits
-        scene: []const u8,
-    };
+/// Optional visual
+sprite: ?SpriteData = null,
 
-    pub const SpriteData = struct {
-        color: Color = Color.white,
-        texture_path: ?[]const u8 = null,
-    };
-
-    /// Creates an owned snapshot for serialization. Call deinit on the result.
-    pub fn toDef(self: Entity, alloc: Allocator) !OwnedEntityDef {
-        const def = EntityDef{
-            .name = self.name,
-            .tags = self.tags,
-            .owner = self.owner,
-            .position = self.body.position,
-            .rotation = self.body.rotation,
-            .body = .{
-                .kind = self.body.kind,
-                .shape = self.body.shape,
-                .mass = self.body.mass,
-                .friction = self.body.friction,
-                .restitution = self.body.restitution,
-                .velocity = self.body.velocity,
-                .inertia = self.body.inertia,
-            },
-            .sprite = self.sprite,
-        };
-        return def.clone(alloc);
-    }
+pub const Owner = union(enum) {
+    /// Persistent - survives scene changes
+    none,
+    /// Owned by a scene - removed when scene deinits
+    scene: []const u8,
 };
+
+pub const SpriteData = struct {
+    color: Color = Color.white,
+    texture_path: ?[]const u8 = null,
+};
+
+/// Creates an owned snapshot for serialization. Call deinit on the result.
+pub fn toDef(self: Entity, alloc: Allocator) !OwnedEntityDef {
+    const def = EntityDef{
+        .name = self.name,
+        .tags = self.tags,
+        .owner = self.owner,
+        .position = self.body.position,
+        .rotation = self.body.rotation,
+        .body = .{
+            .kind = self.body.kind,
+            .shape = self.body.shape,
+            .mass = self.body.mass,
+            .friction = self.body.friction,
+            .restitution = self.body.restitution,
+            .velocity = self.body.velocity,
+            .inertia = self.body.inertia,
+        },
+        .sprite = self.sprite,
+    };
+    return def.clone(alloc);
+}
 
 /// Borrowed description for spawning or saving an entity. Strings may be literals.
 /// The caller keeps referenced data alive while the definition or spawned entity uses it.

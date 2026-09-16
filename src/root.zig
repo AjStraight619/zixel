@@ -1,5 +1,5 @@
 pub const Engine = @import("engine/Engine.zig");
-pub const Ctx = @import("engine/Ctx.zig").Ctx;
+pub const Ctx = @import("engine/Ctx.zig");
 
 pub const Input = @import("engine/Input.zig");
 pub const Renderer = @import("engine/Renderer.zig");
@@ -8,7 +8,7 @@ pub const Scene = @import("engine/Scene.zig");
 pub const Sprite = @import("engine/Sprite.zig");
 
 // Entity system
-pub const Entity = @import("engine/Entity.zig").Entity;
+pub const Entity = @import("engine/Entity.zig");
 pub const EntityDef = @import("engine/Entity.zig").EntityDef;
 pub const OwnedEntityDef = @import("engine/Entity.zig").OwnedEntityDef;
 pub const EntityHandle = @import("engine/Entity.zig").EntityHandle;
@@ -24,10 +24,10 @@ pub const core = struct {
 
 // Physics
 pub const physics = struct {
-    pub const World = @import("physics/world.zig");
-    pub const Body = @import("physics/body.zig").Body;
-    pub const BodyKind = @import("physics/body.zig").BodyKind;
-    pub const BodyOptions = @import("physics/body.zig").BodyOptions;
+    pub const World = @import("physics/World.zig");
+    pub const Body = @import("physics/Body.zig");
+    pub const BodyKind = @import("physics/Body.zig").BodyKind;
+    pub const BodyOptions = @import("physics/Body.zig").BodyOptions;
     pub const PhysicsShape = @import("math/shapes.zig").PhysicsShape;
     pub const collision = @import("physics/collision.zig");
     pub const response = @import("physics/response.zig");
@@ -39,13 +39,13 @@ test {
     _ = @import("physics/narrowphase.zig");
     _ = @import("engine/data.zig");
     _ = @import("engine/Entity.zig");
-    _ = @import("physics/world.zig");
+    _ = @import("physics/World.zig");
 }
 
 // Math
 pub const math = struct {
-    pub const Vec2 = @import("math/vec2.zig");
-    pub const AABB = @import("math/aabb.zig");
+    pub const Vec2 = @import("math/Vec2.zig");
+    pub const Aabb = @import("math/Aabb.zig");
     pub const shapes = @import("math/shapes.zig");
 };
 

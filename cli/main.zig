@@ -1,7 +1,7 @@
 const std = @import("std");
 const Alignment = std.mem.Alignment;
-const parseCommand = @import("./parse.zig").parseCommand;
-const command = @import("./command.zig");
+const parseCommand = @import("parse.zig").parseCommand;
+const command = @import("command.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);

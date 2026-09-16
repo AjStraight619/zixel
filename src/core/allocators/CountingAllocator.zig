@@ -28,7 +28,7 @@ pub fn allocator(self: *CountingAllocator) Allocator {
     };
 }
 
-pub fn live_size(self: *CountingAllocator) u64 {
+pub fn liveSize(self: *CountingAllocator) u64 {
     return self.alloc_size - self.free_size;
 }
 

@@ -3,7 +3,7 @@ const zixel = @import("zixel_new");
 const Allocator = std.mem.Allocator;
 const EntityDef = zixel.EntityDef;
 
-const NewSceneDialog = @import("toolbar/file/NewScene.zig").NewSceneDialog;
+const NewSceneDialog = @import("toolbar/file/NewSceneDialog.zig");
 
 const Editor = @This();
 

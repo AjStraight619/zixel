@@ -1,4 +1,4 @@
-const Vec2 = @import("vec2.zig");
+const Vec2 = @import("Vec2.zig");
 
 /// Circle shape for physics collision
 pub const Circle = struct {

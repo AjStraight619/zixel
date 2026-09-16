@@ -1,8 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const BodyKind = @import("../physics/body.zig").BodyKind;
+const BodyKind = @import("../physics/Body.zig").BodyKind;
 const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
-const Vec2 = @import("../math/vec2.zig");
+const Vec2 = @import("../math/Vec2.zig");
 const EntityDef = @import("Entity.zig").EntityDef;
 
 pub fn save(alloc: Allocator, path: []const u8, scene_name: []const u8, defs: []const EntityDef) !void {

@@ -1,7 +1,7 @@
 const std = @import("std");
 const sokol = @import("sokol");
 const sapp = sokol.app;
-const Vec2 = @import("../math/vec2.zig");
+const Vec2 = @import("../math/Vec2.zig");
 
 const Input = @This();
 

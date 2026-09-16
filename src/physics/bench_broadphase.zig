@@ -1,7 +1,7 @@
 const std = @import("std");
-const World = @import("world.zig");
+const World = @import("World.zig");
 const Config = World.Config;
-const CountingAllocator = @import("../core/allocators/counting_allocator.zig");
+const CountingAllocator = @import("../core/allocators/CountingAllocator.zig");
 
 test "benchmark broadphase churn" {
     const raw_alloc = std.testing.allocator;

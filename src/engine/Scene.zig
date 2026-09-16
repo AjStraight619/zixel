@@ -101,24 +101,24 @@ pub fn removeChild(self: *Scene, alloc: Allocator, name: []const u8) bool {
 
 fn vtableFor(comptime T: type) *const VTable {
     const Impl = struct {
-        fn v_update(ctx: *anyopaque, dt: f32) void {
+        fn vUpdate(ctx: *anyopaque, dt: f32) void {
             const self: *T = @ptrCast(@alignCast(ctx));
             T.update(self, dt);
         }
-        fn v_render(ctx: *anyopaque) void {
+        fn vRender(ctx: *anyopaque) void {
             const self: *T = @ptrCast(@alignCast(ctx));
             T.render(self);
         }
-        fn v_deinit(ctx: *anyopaque, alloc: Allocator) void {
+        fn vDeinit(ctx: *anyopaque, alloc: Allocator) void {
             const self: *T = @ptrCast(@alignCast(ctx));
             T.deinit(self, alloc);
             alloc.destroy(self);
         }
 
         pub const vtable = VTable{
-            .update = v_update,
-            .render = v_render,
-            .deinit = v_deinit,
+            .update = vUpdate,
+            .render = vRender,
+            .deinit = vDeinit,
         };
     };
     return &Impl.vtable;

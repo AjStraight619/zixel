@@ -1,9 +1,9 @@
 const std = @import("std");
 const log = std.log;
 
-const Vec2 = @import("../math/vec2.zig");
-const body_mod = @import("body.zig");
-const Body = body_mod.Body;
+const Vec2 = @import("../math/Vec2.zig");
+const body_mod = @import("Body.zig");
+const Body = body_mod;
 const BodyOptions = body_mod.BodyOptions;
 const BodyKind = body_mod.BodyKind;
 
@@ -12,12 +12,12 @@ const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
 const Allocator = std.mem.Allocator;
 
 const narrowphase = @import("narrowphase.zig");
-const checkBodiesCollision = narrowphase.NarrowPhase.checkBodiesCollision;
+const checkBodiesCollision = narrowphase.checkBodiesCollision;
 
-const CollisionResponse = @import("response.zig");
+const response = @import("response.zig");
 
 const entity_mod = @import("../engine/Entity.zig");
-pub const Entity = entity_mod.Entity;
+pub const Entity = entity_mod;
 pub const EntityDef = entity_mod.EntityDef;
 pub const EntityHandle = entity_mod.EntityHandle;
 
@@ -330,7 +330,7 @@ fn solveCollisions(self: *World) void {
                 self.debug_stats.max_penetration = @max(self.debug_stats.max_penetration, manifold.penetration);
 
                 if (iter == 0) {
-                    CollisionResponse.resolveWithMaterials(
+                    response.resolveWithMaterials(
                         body1,
                         body2,
                         manifold,
@@ -343,7 +343,7 @@ fn solveCollisions(self: *World) void {
                 }
 
                 if (manifold.penetration > self.cfg.contact_slop) {
-                    CollisionResponse.correctPositions(body1, body2, manifold, self.cfg.baumgarte_factor);
+                    response.correctPositions(body1, body2, manifold, self.cfg.baumgarte_factor);
                 }
             }
         }

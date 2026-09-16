@@ -1,8 +1,8 @@
 const std = @import("std");
 const math = std.math;
 
-const Vec2 = @import("../math/vec2.zig");
-const Body = @import("body.zig").Body;
+const Vec2 = @import("../math/Vec2.zig");
+const Body = @import("Body.zig");
 const ContactManifold = @import("narrowphase.zig").ContactManifold;
 
 // Small thresholds to avoid doing tiny useless corrections (micro-jitter).
