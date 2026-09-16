@@ -32,7 +32,7 @@ fn getSolverData(body: *Body, contact_point: Vec2) SolverData {
         return .{
             .inv_mass = 0.0,
             .inv_inertia = 0.0,
-            .r = Vec2.zero,
+            .r = contact_point.sub(body.position),
         };
     }
     return .{
@@ -86,12 +86,12 @@ fn resolveNormalImpulse(
 ) NormalImpulseResult {
     // Calculate velocity at the specific contact point for each body
     // Velocity = LinearVel + (AngularVel * R_perp)
-    const v1 = if (body1.kind == .dynamic)
+    const v1 = if (body1.kind != .static)
         body1.velocity.add(Vec2{ .x = -body1.angular_velocity * sd1.r.y, .y = body1.angular_velocity * sd1.r.x })
     else
         Vec2.zero;
 
-    const v2 = if (body2.kind == .dynamic)
+    const v2 = if (body2.kind != .static)
         body2.velocity.add(Vec2{ .x = -body2.angular_velocity * sd2.r.y, .y = body2.angular_velocity * sd2.r.x })
     else
         Vec2.zero;
@@ -173,6 +173,10 @@ fn applyFrictionImpulse(
 fn applyImpulse(body: *Body, sd: SolverData, impulse: Vec2) void {
     if (body.kind != .dynamic) return;
 
+    // Wake impacted bodies, but preserve the sleep timer of already-awake
+    // bodies so resting support impulses do not prevent them from settling.
+    if (body.isSleeping() and (impulse.x != 0 or impulse.y != 0)) body.wakeUp();
+
     // Linear: v += impulse / mass
     body.velocity = body.velocity.add(impulse.scale(sd.inv_mass));
 
@@ -207,6 +211,56 @@ pub fn correctPositions(
 }
 
 const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
+
+test "kinematic contact velocity transfers motion in either body order" {
+    const Case = struct { kind: Body.BodyKind, velocity: f32, expected: f32 };
+    for ([_]Case{
+        .{ .kind = .kinematic, .velocity = -10, .expected = -10 },
+        .{ .kind = .kinematic, .velocity = 10, .expected = 0 },
+        .{ .kind = .static, .velocity = -10, .expected = 0 },
+    }) |case| {
+        for ([_]bool{ false, true }) |reverse| {
+            var dynamic = Body.initDynamic(PhysicsShape.circ(1), Vec2.zero, .{});
+            var other = Body.initKinematic(PhysicsShape.circ(1), Vec2.init(2, 0), .{});
+            other.kind = case.kind;
+            other.velocity.x = case.velocity;
+            const normal = Vec2.init(if (reverse) -1 else 1, 0);
+            const manifold = ContactManifold.init(Vec2.init(1, 0), normal, 0);
+            const a = if (reverse) &other else &dynamic;
+            const b = if (reverse) &dynamic else &other;
+            resolveWithMaterials(a, b, manifold, 0, 0, 0, 0, 0);
+            try std.testing.expectApproxEqAbs(case.expected, dynamic.velocity.x, 0.0001);
+            try std.testing.expectEqual(case.velocity, other.velocity.x);
+            try std.testing.expectEqual(@as(f32, 0), other.angular_velocity);
+        }
+    }
+}
+
+test "rotating kinematic bodies contribute angular contact velocity" {
+    for ([_]bool{ false, true }) |reverse| {
+        var dynamic = Body.initDynamic(PhysicsShape.circ(1), Vec2.init(-1, 1), .{});
+        var kinematic = Body.initKinematic(PhysicsShape.rect(2, 2), Vec2.zero, .{});
+        kinematic.angular_velocity = 10;
+        // At (0,1), the rotating surface moves left at 10 units per second.
+        const manifold = ContactManifold.init(Vec2.init(0, 1), Vec2.init(if (reverse) -1 else 1, 0), 0);
+        resolveWithMaterials(if (reverse) &kinematic else &dynamic, if (reverse) &dynamic else &kinematic, manifold, 0, 0, 0, 0, 0);
+        try std.testing.expectApproxEqAbs(@as(f32, -10), dynamic.velocity.x, 0.0001);
+        try std.testing.expectEqual(@as(f32, 10), kinematic.angular_velocity);
+        try std.testing.expectEqual(Vec2.zero, kinematic.velocity);
+    }
+}
+
+test "moving kinematic surfaces contribute tangential velocity to friction" {
+    var dynamic = Body.initDynamic(PhysicsShape.circ(1), Vec2.zero, .{});
+    var kinematic = Body.initKinematic(PhysicsShape.rect(2, 2), Vec2.init(0, 2), .{ .velocity = .{ .x = 4, .y = -10 } });
+    const manifold = ContactManifold.init(Vec2.init(0, 1), Vec2.init(0, 1), 0);
+    resolveWithMaterials(&dynamic, &kinematic, manifold, 0, 0, 1, 1, 0);
+    try std.testing.expectApproxEqAbs(@as(f32, 4.0 / 3.0), dynamic.velocity.x, 0.0001);
+    try std.testing.expectApproxEqAbs(@as(f32, -10), dynamic.velocity.y, 0.0001);
+    try std.testing.expectApproxEqAbs(@as(f32, -8.0 / 3.0), dynamic.angular_velocity, 0.0001);
+    try std.testing.expectEqual(Vec2.init(4, -10), kinematic.velocity);
+    try std.testing.expectEqual(@as(f32, 0), kinematic.angular_velocity);
+}
 
 fn makeTestDynamicBody(x: f32, y: f32, size: f32) Body {
     return Body.initDynamic(

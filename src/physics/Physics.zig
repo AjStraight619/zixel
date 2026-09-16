@@ -127,6 +127,8 @@ fn integratePositions(_: *Physics, bodies: anytype, dt: f32) void {
             },
             .kinematic => {
                 body.position = body.position.add(body.velocity.scale(dt));
+                body.rotation += body.angular_velocity * dt;
+                body.rotation = std.math.wrap(body.rotation, std.math.pi);
             },
             .static => {},
         }

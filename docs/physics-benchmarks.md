@@ -1,7 +1,10 @@
 # Physics benchmark experiment
 
 Measured on 2026-09-16 against runtime commit `3138de2` using Zig 0.16.0.
-The benchmark changes are retained; the runtime experiments are temporary.
+The tables record the original experiment. Subsequent commits fixed rectangle
+bounds, external-force wake-up, and kinematic contact velocity (including angular
+motion and waking bodies on impact). Bounds caching remains experimental.
+The recorded timings have not been replaced with measurements of those fixes.
 
 ## Findings
 
@@ -169,7 +172,10 @@ which raises that suite's mean to 7.53 ms. Its median is 5.50 ms and p95 8.39 ms
 The second suite's mean is 5.87 ms. The interruption's cause was not identified;
 this illustrates why a single average is insufficient on a shared machine.
 
-## Reproduce the baseline
+## Run the benchmarks
+
+These commands measure the checked-out runtime. Use commit `d3cf14e` to reproduce
+the original benchmark implementation and unfixed runtime measured in this report.
 
 ```sh
 zig build bench -Doptimize=ReleaseFast
@@ -183,6 +189,6 @@ zig test src/bench_runner.zig -O ReleaseFast --test-filter 'benchmark:' \
 taskset -c 0 /tmp/zixel-bench
 ```
 
-The runtime corrections and caching prototype were applied only to temporary
-copies. The repository retains the benchmark harness, build target, and these
-notes. No runtime optimization or bug fix is implied by running the baseline.
+During the original experiment, runtime corrections and caching were applied only
+to temporary copies. The branch now includes the correctness fixes described at
+the top of this report; it does not include the bounds-caching optimization.

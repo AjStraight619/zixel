@@ -2,6 +2,53 @@ const std = @import("std");
 const World = @import("World.zig");
 const Physics = @import("../physics/Physics.zig");
 
+test "moving kinematic collider pushes awake and sleeping dynamic bodies" {
+    for ([_]bool{ false, true }) |sleeping| {
+        var world = World.init(std.testing.allocator);
+        defer world.deinit();
+        var physics = try Physics.init(std.testing.allocator, .{
+            .gravity = .{ .x = 0, .y = 0 },
+            .linear_damping = 0,
+            .contact_slop = 0,
+            .baumgarte_factor = 1,
+            .sleep_velocity_threshold = 0.01,
+        });
+        defer physics.deinit();
+        const dynamic_handle = try world.addDynamicCircle(0, 0, 1, .{ .restitution = 0, .friction = 0 });
+        const kinematic_handle = try world.addKinematicCircle(1.9, 0, 1, .{
+            .velocity = .{ .x = -10, .y = 0 },
+            .restitution = 0,
+            .friction = 0,
+        });
+        const dynamic = world.getBody(dynamic_handle).?;
+        const kinematic = world.getBody(kinematic_handle).?;
+        if (sleeping) dynamic.putToSleep();
+        physics.update(world.bodies(), physics.cfg.physics_time_step);
+        try std.testing.expect(!dynamic.isSleeping());
+        try std.testing.expectApproxEqAbs(@as(f32, -10), dynamic.velocity.x, 0.0001);
+        try std.testing.expectEqual(@as(f32, -10), kinematic.velocity.x);
+        try std.testing.expectApproxEqAbs(1.9 - 10 * physics.cfg.physics_time_step, kinematic.position.x, 0.0001);
+        const previous_x = dynamic.position.x;
+        physics.update(world.bodies(), physics.cfg.physics_time_step);
+        try std.testing.expectApproxEqAbs(previous_x - 10 * physics.cfg.physics_time_step, dynamic.position.x, 0.0001);
+    }
+}
+
+test "kinematic motion integrates angular velocity while static bodies stay fixed" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{});
+    defer physics.deinit();
+    const handle = try world.addKinematicRect(0, 0, 2, 2, .{});
+    const stationary = try world.addStaticRect(100, 0, 2, 2, .{});
+    world.getBody(handle).?.angular_velocity = 2;
+    world.getBody(stationary).?.angular_velocity = 2;
+    physics.update(world.bodies(), physics.cfg.physics_time_step);
+    try std.testing.expectApproxEqAbs(2 * physics.cfg.physics_time_step, world.getBody(handle).?.rotation, 0.0001);
+    try std.testing.expectEqual(@as(f32, 2), world.getBody(handle).?.angular_velocity);
+    try std.testing.expectEqual(@as(f32, 0), world.getBody(stationary).?.rotation);
+}
+
 test "force on a sleeping body is integrated once even with immediate sleeping enabled" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();
