@@ -90,7 +90,7 @@ pub const NavMazeScene = struct {
 
     pub fn render(self: *NavMazeScene) void {
         // World renders all entities
-        self.ctx.world.*.renderAll(self.ctx.renderer);
+        zixel.drawEntities(self.ctx.renderer, self.ctx.world);
 
         // Draw path dots
         if (self.getAgentHandle()) |h| {

@@ -165,7 +165,7 @@ pub const AngularRectsScene = struct {
     }
 
     pub fn render(self: *AngularRectsScene) void {
-        self.ctx.world.*.renderAll(self.ctx.renderer);
+        zixel.drawEntities(self.ctx.renderer, self.ctx.world);
     }
 
     pub fn deinit(self: *AngularRectsScene, alloc: Allocator) void {

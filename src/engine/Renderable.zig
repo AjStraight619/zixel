@@ -1,5 +1,5 @@
 const std = @import("std");
-const World = @import("../physics/World.zig");
+const World = @import("World.zig");
 const Renderer = @import("Renderer.zig");
 
 const Allocator = std.mem.Allocator;

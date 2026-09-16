@@ -1,12 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Vec2 = @import("../math/Vec2.zig");
-const Color = @import("Renderer.zig").Color;
+const Color = @import("Color.zig");
 const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
-const body_mod = @import("../physics/Body.zig");
-const Body = body_mod;
-const BodyKind = body_mod.BodyKind;
-const BodyOptions = body_mod.BodyOptions;
+const Body = @import("../physics/Body.zig");
+const BodyKind = Body.BodyKind;
 
 const Entity = @This();
 

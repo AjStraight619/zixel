@@ -27,16 +27,40 @@ Use the editor or sample commands above to run the graphical application.
 ## Layout
 
 - `src/root.zig`: public runtime API used by games and the editor.
-- `src/engine/`: engine lifecycle, scenes, input, rendering, and entity types.
-- `src/physics/`: simulation, broadphase, and collision response.
+- `src/engine/`: engine lifecycle, scenes, entity storage (`World`), and rendering.
+- `src/physics/`: `Physics` simulation, body types, broadphase, and collision response.
 - `src/core/` and `src/math/`: algorithms and math primitives.
 - `editor/`: editor application, panels, toolbar, and dialogs.
 - `cli/`: command-line application (`new` is currently a stub).
 - `samples/`: runnable games demonstrating the runtime API.
 
 The application draws the stateless toolbar; editor state does not import it.
-World and broadphase share `engine/EntitySlot.zig` without importing each other.
+World exposes a borrowed body iterator; physics and broadphase consume it without
+importing World. Entity drawing lives in `engine/draw_entities.zig`.
 CLI parsing and project creation share `cli/NewArgs.zig`.
+
+## Runtime responsibilities
+
+`World` owns entities and generational handles. `Physics` owns simulation settings,
+timing, and collision state. Drawing reads entities and sends commands to Renderer.
+Engine coordinates them; scenes access `ctx.world`, `ctx.physics`, and `ctx.renderer`.
+
+```zig
+var world = zixel.World.init(allocator);
+defer world.deinit();
+var physics = try zixel.Physics.init(allocator, .{});
+defer physics.deinit();
+
+// After spawning entities, advance simulation when desired:
+physics.update(world.bodies(), dt);
+// Inside an active rendering frame:
+zixel.drawEntities(renderer, &world);
+```
+
+Body iterators borrow storage. Do not spawn or remove entities during a physics
+update. Rendering is independent of simulation, so paused worlds remain drawable.
+Bodies still live inside entities; this extraction preserves the existing simulation
+and does not introduce an ECS or separate body storage.
 
 ## Naming
 

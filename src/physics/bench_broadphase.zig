@@ -1,6 +1,7 @@
 const std = @import("std");
-const World = @import("World.zig");
-const Config = World.Config;
+const World = @import("../engine/World.zig");
+const Physics = @import("Physics.zig");
+const Config = Physics.Config;
 const CountingAllocator = @import("../core/allocators/CountingAllocator.zig");
 
 test "benchmark broadphase churn" {
@@ -11,7 +12,9 @@ test "benchmark broadphase churn" {
     // 1. Setup World with HIGH iterations
     var cfg = Config{};
     cfg.position_iterations = 8;
-    var world = try World.init(alloc, cfg);
+    var world = World.init(alloc);
+    var physics = try Physics.init(alloc, cfg);
+    defer physics.deinit();
     defer world.deinit();
 
     const count = 2000;
@@ -32,11 +35,11 @@ test "benchmark broadphase churn" {
         // Prevent optimizer from skipping the loop
         std.mem.doNotOptimizeAway(total_steps);
 
-        world.update(0.016);
+        physics.update(world.bodies(), 0.016);
     }
 
     // Force the compiler to acknowledge the world state changed
-    std.mem.doNotOptimizeAway(world.accumulated_time);
+    std.mem.doNotOptimizeAway(physics.accumulated_time);
 
     const duration = started.durationTo(std.Io.Clock.awake.now(std.testing.io)).toNanoseconds();
 

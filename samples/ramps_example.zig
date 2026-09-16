@@ -102,7 +102,7 @@ pub const RampsScene = struct {
 
         // Spawn circle at top on spacebar
         if (self.ctx.input.isKeyPressed(.space)) {
-            const x: f32 = 80 + @mod(@as(f32, @floatFromInt(self.ctx.world.step_count)), 100.0) * 1.5;
+            const x: f32 = 80 + @mod(@as(f32, @floatFromInt(self.ctx.physics.step_count)), 100.0) * 1.5;
             if (self.ctx.world.addDynamicCircle(x, 30, 14, .{ .restitution = 0.55, .friction = 0.2 })) |handle| {
                 const color = Color{ .r = 0.9, .g = 0.5, .b = 0.9, .a = 1 };
                 self.sprites.append(self.ctx.alloc, Sprite.fromBody(handle, color)) catch {};

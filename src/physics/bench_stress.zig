@@ -1,6 +1,7 @@
 const std = @import("std");
-const World = @import("World.zig");
-const Config = World.Config;
+const World = @import("../engine/World.zig");
+const Physics = @import("Physics.zig");
+const Config = Physics.Config;
 const Vec2 = @import("../math/Vec2.zig");
 const CountingAllocator = @import("../core/allocators/CountingAllocator.zig");
 
@@ -12,7 +13,9 @@ test "benchmark: pressure cooker (mixed shapes)" {
     // 1. Setup World
     var cfg = Config{};
     cfg.position_iterations = 4;
-    var world = try World.init(alloc, cfg);
+    var world = World.init(alloc);
+    var physics = try Physics.init(alloc, cfg);
+    defer physics.deinit();
     defer world.deinit();
 
     var rng = std.Random.DefaultPrng.init(42);
@@ -61,10 +64,10 @@ test "benchmark: pressure cooker (mixed shapes)" {
     var step: usize = 0;
     while (step < steps) : (step += 1) {
         std.mem.doNotOptimizeAway(step);
-        world.update(dt);
+        physics.update(world.bodies(), dt);
     }
 
-    std.mem.doNotOptimizeAway(world.accumulated_time);
+    std.mem.doNotOptimizeAway(physics.accumulated_time);
 
     const duration = started.durationTo(std.Io.Clock.awake.now(std.testing.io)).toNanoseconds();
 

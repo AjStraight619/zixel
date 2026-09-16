@@ -8,20 +8,22 @@ const Scene = @import("Scene.zig");
 const window = @import("window.zig");
 const Renderer = @import("Renderer.zig");
 const Input = @import("Input.zig");
-const World = @import("../physics/World.zig");
+const World = @import("World.zig");
+const Physics = @import("../physics/Physics.zig");
 pub const Ctx = @import("Ctx.zig");
 
 pub const Engine = @This();
 
 pub const Config = struct {
     window: window.Config = .{},
-    physics: World.Config = .{},
+    physics: Physics.Config = .{},
     time: Time.Config = .{},
     game_dir: ?[]const u8 = null,
 };
 
 alloc: std.mem.Allocator,
 world: World,
+physics: Physics,
 time: Time,
 input: Input,
 renderer: Renderer,
@@ -34,7 +36,8 @@ game_dir: ?[]const u8 = null,
 pub fn init(alloc: std.mem.Allocator, cfg: Config) !Engine {
     return Engine{
         .alloc = alloc,
-        .world = try World.init(alloc, cfg.physics),
+        .world = World.init(alloc),
+        .physics = try Physics.init(alloc, cfg.physics),
         .time = Time.init(cfg.time),
         .input = .{},
         .renderer = .{},
@@ -48,6 +51,7 @@ pub fn init(alloc: std.mem.Allocator, cfg: Config) !Engine {
 pub fn deinit(self: *Engine) void {
     if (self.scene) |*s| s.deinit(self.alloc);
     self.scene = null;
+    self.physics.deinit();
     self.world.deinit();
 }
 
@@ -62,7 +66,7 @@ pub fn tick(self: *Engine) void {
         var world_blocked = false;
 
         if (self.scene) |*s| world_blocked = updateRecursive(s, fdt);
-        if (!world_blocked) self.world.update(fdt);
+        if (!world_blocked) self.physics.update(self.world.bodies(), fdt);
 
         ran_fixed_step = true;
     }
@@ -147,6 +151,7 @@ pub fn ctx(self: *Engine) Ctx {
     return .{
         .alloc = self.alloc,
         .world = &self.world,
+        .physics = &self.physics,
         .renderer = &self.renderer,
         .input = &self.input,
     };

@@ -24,7 +24,7 @@ pub const core = struct {
 
 // Physics
 pub const physics = struct {
-    pub const World = @import("physics/World.zig");
+    pub const Physics = @import("physics/Physics.zig");
     pub const Body = @import("physics/Body.zig");
     pub const BodyKind = @import("physics/Body.zig").BodyKind;
     pub const BodyOptions = @import("physics/Body.zig").BodyOptions;
@@ -35,12 +35,13 @@ pub const physics = struct {
 };
 
 test {
+    _ = @import("engine/world_physics_test.zig");
     _ = @import("core/nav/astar.zig");
     _ = @import("physics/response.zig");
     _ = @import("physics/narrowphase.zig");
     _ = @import("engine/data.zig");
     _ = @import("engine/Entity.zig");
-    _ = @import("physics/World.zig");
+    _ = @import("engine/World.zig");
 }
 
 // Math
@@ -53,7 +54,9 @@ pub const math = struct {
 // Convenience exports
 pub const Vec2 = math.Vec2;
 pub const Color = Renderer.Color;
-pub const World = physics.World;
+pub const World = @import("engine/World.zig");
+pub const Physics = physics.Physics;
+pub const drawEntities = @import("engine/draw_entities.zig").draw;
 pub const Body = physics.Body;
 pub const BodyKind = physics.BodyKind;
 pub const PhysicsShape = physics.PhysicsShape;

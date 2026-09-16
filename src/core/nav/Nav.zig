@@ -4,7 +4,7 @@ const Allocator = std.mem.Allocator;
 const Grid = @import("Grid.zig");
 const astar = @import("astar.zig");
 
-const World = @import("../../physics/World.zig");
+const World = @import("../../engine/World.zig");
 const EntityHandle = World.EntityHandle;
 const Body = @import("../../physics/Body.zig");
 

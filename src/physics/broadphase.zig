@@ -1,7 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Body = @import("Body.zig");
-const EntitySlot = @import("../engine/EntitySlot.zig");
 
 /// Unique key for deduplicating pairs
 const PairKey = struct {
@@ -68,18 +67,15 @@ pub const SpatialHash = struct {
         return @intFromFloat(@floor(val * self.inv_cell_size));
     }
 
-    /// Rebuilds the grid and collects all unique collision pairs from EntitySlots.
-    /// Alias: update
-    pub fn updateFromEntities(self: *SpatialHash, slots: []EntitySlot) !void {
+    /// Rebuilds collision pairs from a copyable iterator with next() ?*Body.
+    pub fn update(self: *SpatialHash, bodies: anytype) !void {
         var it = self.cells.valueIterator();
         while (it.next()) |list| list.clearRetainingCapacity();
         self.pairs.clearRetainingCapacity();
         self.pair_set.clearRetainingCapacity();
 
-        for (slots) |*slot| {
-            if (!slot.alive) continue;
-            const body = &slot.entity.body;
-
+        var body_iter = bodies;
+        while (body_iter.next()) |body| {
             const aabb = body.aabb();
             const min_x = self.getCellCoord(aabb.min.x);
             const max_x = self.getCellCoord(aabb.max.x);
