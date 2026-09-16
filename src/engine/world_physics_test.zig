@@ -2,6 +2,26 @@ const std = @import("std");
 const World = @import("World.zig");
 const Physics = @import("../physics/Physics.zig");
 
+test "separated rectangles generate no broadphase pairs on either side of the origin" {
+    for ([_]f32{ 128, -640 }) |offset| {
+        var world = World.init(std.testing.allocator);
+        defer world.deinit();
+        var physics = try Physics.init(std.testing.allocator, .{});
+        defer physics.deinit();
+        for (0..128) |i| {
+            _ = try world.addDynamicRect(
+                offset + @as(f32, @floatFromInt(i % 16)) * 32,
+                offset + @as(f32, @floatFromInt(i / 16)) * 32,
+                15,
+                15,
+                .{ .rotation = 0.3 },
+            );
+        }
+        try physics.spatial_hash.update(world.bodies());
+        try std.testing.expectEqual(@as(usize, 0), physics.spatial_hash.pairs.items.len);
+    }
+}
+
 test "body iterator preserves broadphase pairs and skips removed entities" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();

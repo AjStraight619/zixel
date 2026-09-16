@@ -137,7 +137,7 @@ fn computeAabb(shape: PhysicsShape, position: Vec2, rotation: f32) Aabb {
                 Vec2.init(-half_w, half_h),
             };
             var min_aabb = Vec2.init(std.math.floatMax(f32), std.math.floatMax(f32));
-            var max_aabb = Vec2.init(std.math.floatMin(f32), std.math.floatMin(f32));
+            var max_aabb = Vec2.init(-std.math.floatMax(f32), -std.math.floatMax(f32));
             for (corners) |corner| {
                 const rotated = corner.rotate(rotation);
                 const world = rotated.add(position);
@@ -155,5 +155,27 @@ fn computeAabb(shape: PhysicsShape, position: Vec2, rotation: f32) Aabb {
                 position.add(Vec2.init(r, r)),
             );
         },
+    }
+}
+
+test "rotated rectangle bounds match analytic extents across the origin" {
+    var rng = std.Random.DefaultPrng.init(73);
+    const random = rng.random();
+    for (0..1000) |_| {
+        const width = 3 + random.float(f32) * 80;
+        const height = 3 + random.float(f32) * 80;
+        const position = Vec2.init(random.float(f32) * 1000 - 500, random.float(f32) * 1000 - 500);
+        const rotation = random.float(f32) * 2 * std.math.pi;
+        const body = Body.initDynamic(PhysicsShape.rect(width, height), position, .{ .rotation = rotation });
+        const half = Vec2.init(
+            @abs(@cos(rotation)) * width / 2 + @abs(@sin(rotation)) * height / 2,
+            @abs(@sin(rotation)) * width / 2 + @abs(@cos(rotation)) * height / 2,
+        );
+        const expected = Aabb.fromCenterHalfExtents(position, half);
+        const actual = body.aabb();
+        try std.testing.expectApproxEqAbs(expected.min.x, actual.min.x, 0.0001);
+        try std.testing.expectApproxEqAbs(expected.min.y, actual.min.y, 0.0001);
+        try std.testing.expectApproxEqAbs(expected.max.x, actual.max.x, 0.0001);
+        try std.testing.expectApproxEqAbs(expected.max.y, actual.max.y, 0.0001);
     }
 }
