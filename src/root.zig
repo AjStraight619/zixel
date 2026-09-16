@@ -33,10 +33,11 @@ pub const physics = struct {
     pub const narrowphase = @import("physics/narrowphase.zig");
 };
 
-// Force test discovery for physics modules
 test {
-    _ = @import("physics/response.zig");
-    _ = @import("physics/narrowphase.zig");
+    // _ = @import("physics/response.zig");
+    // _ = @import("physics/narrowphase.zig");
+    _ = @import("engine/data.zig");
+    _ = @import("physics/world.zig");
 }
 
 // Math

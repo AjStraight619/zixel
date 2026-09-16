@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Body = @import("body.zig").Body;
-const EntitySlot = @import("world.zig").EntitySlot;
+const EntitySlot = @import("../engine/EntitySlot.zig");
 
 /// Unique key for deduplicating pairs
 const PairKey = struct {

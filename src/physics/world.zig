@@ -59,11 +59,7 @@ const PhysicsConfigError = error{
 const World = @This();
 
 /// Storage slot for generational handles.
-pub const EntitySlot = struct {
-    entity: Entity,
-    generation: u32 = 1,
-    alive: bool = false,
-};
+pub const EntitySlot = @import("../engine/EntitySlot.zig");
 
 // Legacy alias for backwards compatibility
 pub const BodySlot = EntitySlot;
@@ -521,4 +517,25 @@ fn validateConfig(cfg: Config) PhysicsConfigError!void {
         log.err("restitution_clamp_threshold must be >= 0 (got {})", .{cfg.restitution_clamp_threshold});
         return PhysicsConfigError.NegativeRestitutionClamp;
     }
+}
+
+test "shared entity slots preserve broadphase pairs and invalidate removed handles" {
+    var world = try World.init(std.testing.allocator, .{});
+    defer world.deinit();
+
+    const first = try world.addDynamicRect(0, 0, 10, 10, .{});
+    const second = try world.addStaticRect(0, 0, 10, 10, .{});
+    try world.spatial_hash.updateFromEntities(world.slots.items);
+    try std.testing.expectEqual(@as(usize, 1), world.spatial_hash.pairs.items.len);
+    const pair = world.spatial_hash.pairs.items[0];
+    const a = world.getBody(first).?;
+    const b = world.getBody(second).?;
+    try std.testing.expect((pair.a == a and pair.b == b) or (pair.a == b and pair.b == a));
+
+    world.clearAll(false);
+    _ = try world.addDynamicRect(0, 0, 10, 10, .{});
+    try std.testing.expect(world.get(first) == null);
+    try std.testing.expect(world.get(second) == null);
+    try world.spatial_hash.updateFromEntities(world.slots.items);
+    try std.testing.expectEqual(@as(usize, 0), world.spatial_hash.pairs.items.len);
 }

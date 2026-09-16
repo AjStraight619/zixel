@@ -2,28 +2,15 @@ const std = @import("std");
 const cimgui = @import("cimgui");
 
 fn projectVersionFromZon() []const u8 {
-    const zon_text = @embedFile("build.zig.zon");
-
-    var buf: [64 * 1024]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&buf);
-
-    const parsed = std.zon.parse.fromSlice(
-        struct { version: []const u8 },
-        fba.allocator(),
-        zon_text,
-        null,
-        .{ .ignore_unknown_fields = true },
-    ) catch @panic("Invalid build.zig.zon (could not parse .version)");
-
-    return parsed.version;
+    return @import("build.zig.zon").version;
 }
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Build info
     const buildinfo = b.addOptions();
+
     buildinfo.addOption([]const u8, "version", projectVersionFromZon());
 
     const cimgui_conf = cimgui.getConfig(false);
@@ -44,7 +31,7 @@ pub fn build(b: *std.Build) !void {
         .with_sokol_imgui = true,
     });
     // Link CImGui to the Editor's Sokol
-    dep_sokol_editor.artifact("sokol_clib").addIncludePath(dep_cimgui.path(cimgui_conf.include_dir));
+    dep_sokol_editor.artifact("sokol_clib").root_module.addIncludePath(dep_cimgui.path(cimgui_conf.include_dir));
 
     // Module A: For the Game (Lightweight)
     const zixel_game_mod = b.addModule("zixel_new", .{
@@ -117,6 +104,8 @@ pub fn build(b: *std.Build) !void {
     const run_cli_cmd = b.addRunArtifact(cli_exe);
     if (b.args) |args| {
         run_editor_cmd.addArgs(args);
+        run_cli_cmd.addArgs(args);
+        run_cmd.addArgs(args);
     }
     run_cli_step.dependOn(&run_cli_cmd.step);
 

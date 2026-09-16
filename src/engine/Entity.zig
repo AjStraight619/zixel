@@ -79,7 +79,7 @@ pub const Entity = struct {
     }
 };
 
-/// Definition for spawning an entity (what you pass to world.spawn)
+/// Definition for spawning an entity
 pub const EntityDef = struct {
     name: ?[]const u8 = null,
     tags: []const []const u8 = &.{},
@@ -98,6 +98,28 @@ pub const EntityDef = struct {
         velocity: Vec2 = Vec2.zero,
         inertia: ?f32 = null,
     };
+
+    pub fn init() EntityDef {
+        return .{};
+    }
+
+    pub fn deinit(self: *EntityDef, alloc: Allocator) void {
+        if (self.name) |n| alloc.free(n);
+
+        for (self.tags) |tag| {
+            alloc.free(tag);
+        }
+        alloc.free(self.tags);
+
+        switch (self.owner) {
+            .scene => |s| alloc.free(s),
+            .none => {},
+        }
+
+        if (self.sprite) |s| {
+            if (s.texture_path) |tp| alloc.free(tp);
+        }
+    }
 };
 
 /// Generational handle for safely referencing entities.
@@ -118,5 +140,3 @@ pub const EntityHandle = struct {
         return self.index == other.index and self.generation == other.generation;
     }
 };
-
-test "Entity.toDef" {}

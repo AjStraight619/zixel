@@ -1,7 +1,7 @@
 const std = @import("std");
 const fs = std.fs;
 const Allocator = std.mem.Allocator;
-const NewArgs = @import("./command.zig").NewArgs;
+const NewArgs = @import("NewArgs.zig");
 
 const build_zig_tmpl =
     \\const std = @import("std");

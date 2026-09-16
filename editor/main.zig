@@ -6,20 +6,20 @@ const zixel = @import("zixel_new");
 const Allocator = std.mem.Allocator;
 
 const Editor = @import("Editor.zig");
+const Toolbar = @import("toolbar/Toolbar.zig").Toolbar;
 const Project = @import("project.zig").Project;
 
-const Toolbar = @import("panels/toolbar/Toolbar.zig");
 const Hierarchy = @import("panels/Hierarchy.zig");
 const Inspector = @import("panels/Inspector.zig");
 const Console = @import("panels/Console.zig");
 
-const ZixelEditor = struct {
+const Zixel = struct {
     engine: zixel.Engine,
     editor: Editor,
     is_playing: bool = false,
 };
 
-var app: ZixelEditor = undefined;
+var app: Zixel = undefined;
 
 fn onInit() callconv(.c) void {
     sokol.gfx.setup(.{
@@ -66,8 +66,6 @@ fn onInit() callconv(.c) void {
     // Link the editor to the engine's world
     app.editor.world = &app.engine.world;
 
-    // Log success
-    // Note: allocPrint allocates memory, so we catch/handle errors or leak it (sokol log is transient usually)
     if (std.fmt.allocPrint(std.heap.c_allocator, "Editor Initialized. Project: {s}", .{abs_game_path})) |msg| {
         app.editor.log(msg);
     } else |_| {
@@ -97,9 +95,12 @@ fn onFrame() callconv(.c) void {
     app.engine.render();
 
     Toolbar.draw(&app.editor, &app.is_playing);
+
     Hierarchy.draw(&app.editor);
     Inspector.draw(&app.editor);
     Console.draw(&app.editor);
+
+    app.editor.drawOverlays();
 
     simgui.render();
 
