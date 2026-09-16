@@ -145,6 +145,17 @@ pub fn build(b: *std.Build) !void {
         run_sample_step.dependOn(&run_sample_cmd.step);
     }
 
+    // Headless physics benchmarks, separate from normal correctness tests.
+    const benchmarks = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/bench_runner.zig"),
+        .target = target,
+        .optimize = optimize,
+    }), .filters = &.{"benchmark:"} });
+    const run_benchmarks = b.addRunArtifact(benchmarks);
+    run_benchmarks.has_side_effects = true;
+    const bench_step = b.step("bench", "Measure headless physics (use -Doptimize=ReleaseFast)");
+    bench_step.dependOn(&run_benchmarks.step);
+
     // Tests
     const mod_tests = b.addTest(.{ .root_module = zixel_game_mod });
     const run_mod_tests = b.addRunArtifact(mod_tests);

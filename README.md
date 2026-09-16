@@ -24,6 +24,35 @@ until loading existing projects is implemented safely.
 `zig build run` currently invokes the empty `src/main.zig` placeholder.
 Use the editor or sample commands above to run the graphical application.
 
+## Physics benchmarks
+
+```sh
+zig build bench -Doptimize=ReleaseFast
+# Direct execution without the graphics build dependencies:
+zig test src/bench_runner.zig -O ReleaseFast --test-filter 'benchmark:'
+# Unoptimized comparison, limited to the moving-body workloads:
+zig test src/bench_runner.zig -O Debug --test-filter 'sparse moving' --test-filter 'dense circle' --test-filter 'always awake'
+```
+
+Each scenario starts from the same seed for five independent runs. Each run warms
+up for 60 updates and measures 180 updates. Output includes mean, p50/p95/p99,
+maximum, and the range of per-run means, in milliseconds per update. Simulation
+workloads verify exactly one physics step per update; the two broadphase-only
+workloads do not advance simulation. Setup and reporting are outside the timings.
+Allocations inside physics are timed; allocation growth excludes setup and warm-up.
+The allocator matches the physics sample (`page_allocator`), not the editor's C allocator.
+
+The suite also reports candidate pairs, contacts, awake/sleeping bodies, escaped
+body centers, and a final-state hash. It checks finite state and identical results
+across repeats of the same scenario. Passing these checks does not establish
+correct collision response. An escape count indicates the enclosure workload is
+losing bodies, so its timing cannot represent a stable contained pile.
+
+These are headless CPU measurements, excluding game logic, rendering, and editor UI.
+Percentiles combine changing simulation states and scheduling noise; they are not
+confidence intervals. Compare the same compiler, optimization mode, allocator,
+hardware, and workload. See [the experiment report](docs/physics-benchmarks.md).
+
 ## Layout
 
 - `src/root.zig`: public runtime API used by games and the editor.
