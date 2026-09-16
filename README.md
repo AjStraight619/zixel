@@ -1,13 +1,13 @@
 # Zixel
 
-A Zig game runtime and editor, currently developed with **Zig 0.15.2**.
-The compiler requirement is declared in `build.zig.zon`. Use Zig 0.15.2
+A Zig game runtime and editor, currently developed with **Zig 0.16.0**.
+The compiler requirement is declared in `build.zig.zon`. Use Zig 0.16.0
 for this revision. Dependencies are pinned by commit and package hash.
 
 ## Build and run
 
 ```sh
-zig version                 # should print 0.15.2
+zig version                 # should print 0.16.0
 zig build                   # editor, CLI, and all samples
 zig build test
 zig build editor -- /path/to/project
@@ -38,6 +38,12 @@ The application draws the stateless toolbar; editor state does not import it.
 World and broadphase share `engine/EntitySlot.zig` without importing each other.
 CLI parsing and project creation share `cli/NewArgs.zig`.
 
+## Naming
+
+Files representing instantiated types use `TitleCase` (`Entity.zig`, `Vec2.zig`).
+Namespace files use `snake_case` (`narrowphase.zig`, `file_menu.zig`). Functions
+use `camelCase`; variables and fields use `snake_case`.
+
 ## Entity definitions
 
 `EntityDef` borrows its strings, so literals are valid and the definition has no
@@ -62,11 +68,9 @@ Record the compiler used in each release's notes and keep published tags immutab
 A Git tag identifies a committed source snapshot; it does not include uncommitted
 working changes. `v0.1.0` already exists in this repository.
 
-For a Zig 0.16 migration, keep the last tested 0.15.2 release available, update the
-compiler pin and dependencies together, then publish the next Zixel release once
-its build and tests pass. Supporting one compiler version per release is the
-current intended policy; retaining old releases does not promise ongoing fixes
-for every old compiler.
+This branch targets Zig 0.16.0 only. Compiler upgrades update the source and
+dependency pins together; no compatibility layer for earlier Zig releases is
+maintained. Earlier Git commits remain available for older compiler versions.
 
 Distribute editor binaries per OS and architecture. Editor users do not need Zig
 to launch a binary, but may need platform shared libraries. Developers compiling

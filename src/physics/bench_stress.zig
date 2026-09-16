@@ -56,7 +56,7 @@ test "benchmark: pressure cooker (mixed shapes)" {
     const steps = 120;
     const dt = 0.01667;
 
-    var timer = try std.time.Timer.start();
+    const started = std.Io.Clock.awake.now(std.testing.io);
 
     var step: usize = 0;
     while (step < steps) : (step += 1) {
@@ -66,7 +66,7 @@ test "benchmark: pressure cooker (mixed shapes)" {
 
     std.mem.doNotOptimizeAway(world.accumulated_time);
 
-    const duration = timer.read();
+    const duration = started.durationTo(std.Io.Clock.awake.now(std.testing.io)).toNanoseconds();
 
     // 5. Report
     std.debug.print("\n====================================\n", .{});
@@ -82,6 +82,4 @@ test "benchmark: pressure cooker (mixed shapes)" {
     std.debug.print("Time Per Step: {d:.2} ms\n", .{total_ms / @as(f64, @floatFromInt(steps))});
     std.debug.print("FPS Potential: {d:.0}\n", .{1000.0 / (total_ms / @as(f64, @floatFromInt(steps)))});
     std.debug.print("====================================\n", .{});
-
-    return error.BenchmarkDone;
 }

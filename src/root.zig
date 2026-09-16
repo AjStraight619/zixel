@@ -35,6 +35,7 @@ pub const physics = struct {
 };
 
 test {
+    _ = @import("core/nav/astar.zig");
     _ = @import("physics/response.zig");
     _ = @import("physics/narrowphase.zig");
     _ = @import("engine/data.zig");

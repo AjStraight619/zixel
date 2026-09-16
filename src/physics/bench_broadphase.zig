@@ -25,7 +25,7 @@ test "benchmark broadphase churn" {
     }
 
     // 3. Measure 100 STEPS
-    var timer = try std.time.Timer.start();
+    const started = std.Io.Clock.awake.now(std.testing.io);
 
     var total_steps: usize = 0;
     while (total_steps < 100) : (total_steps += 1) {
@@ -38,7 +38,7 @@ test "benchmark broadphase churn" {
     // Force the compiler to acknowledge the world state changed
     std.mem.doNotOptimizeAway(world.accumulated_time);
 
-    const duration = timer.read();
+    const duration = started.durationTo(std.Io.Clock.awake.now(std.testing.io)).toNanoseconds();
 
     std.debug.print("\n====================================\n", .{});
     std.debug.print("Bodies: {d}\n", .{count});
@@ -49,6 +49,4 @@ test "benchmark broadphase churn" {
     std.debug.print("Total Time: {d:.2} ms\n", .{total_ms});
     std.debug.print("Time Per Step: {d:.2} ms\n", .{total_ms / 100.0});
     std.debug.print("====================================\n", .{});
-
-    return error.BenchmarkDone;
 }

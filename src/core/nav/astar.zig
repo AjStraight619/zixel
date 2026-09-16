@@ -29,7 +29,7 @@ pub const Scratch = struct {
             .g_score = try alloc.alloc(f32, cell_count),
             .parent = try alloc.alloc(u32, cell_count),
             .closed = try alloc.alloc(bool, cell_count),
-            .open = std.PriorityQueue(OpenNode, void, compare).init(alloc, {}),
+            .open = std.PriorityQueue(OpenNode, void, compare).initContext({}),
         };
         scratch.reset();
         return scratch;
@@ -46,7 +46,7 @@ pub const Scratch = struct {
         alloc.free(self.g_score);
         alloc.free(self.parent);
         alloc.free(self.closed);
-        self.open.deinit();
+        self.open.deinit(alloc);
     }
 };
 
@@ -171,10 +171,10 @@ pub fn findPath(
     scratch.g_score[start] = 0;
     scratch.parent[start] = NO_PARENT;
     const f0 = heuristic(start, goal, width);
-    scratch.open.add(.{ .f = f0, .idx = start }) catch return false;
+    scratch.open.push(alloc, .{ .f = f0, .idx = start }) catch return false;
 
     while (scratch.open.count() > 0) {
-        const node = scratch.open.remove();
+        const node = scratch.open.pop().?;
         const current: u32 = node.idx;
 
         // Because we may insert duplicates (no decrease-key), skip stale entries.
@@ -204,10 +204,30 @@ pub fn findPath(
                 scratch.parent[nb] = current;
 
                 const f = tentative + heuristic(nb, goal, width);
-                scratch.open.add(.{ .f = f, .idx = nb }) catch return false;
+                scratch.open.push(alloc, .{ .f = f, .idx = nb }) catch return false;
             }
         }
     }
 
     return false;
+}
+
+test "priority queue finds a shortest path around a blocked cell" {
+    const Grid = @import("Grid.zig");
+    const alloc = std.testing.allocator;
+    var grid = try Grid.init(alloc, 3, 3, 1, 0, 0);
+    defer grid.deinit(alloc);
+    grid.setBlocked(1, 1, true);
+    var scratch = try Scratch.init(alloc, grid.cellCount());
+    defer scratch.deinit(alloc);
+    var path: std.ArrayList(u32) = .empty;
+    defer path.deinit(alloc);
+    try std.testing.expect(findPath(alloc, &grid, &scratch, 0, 8, &path));
+    try std.testing.expectEqual(@as(usize, 5), path.items.len);
+    try std.testing.expectEqual(@as(u32, 0), path.items[0]);
+    try std.testing.expectEqual(@as(u32, 8), path.items[4]);
+    for (path.items) |cell| try std.testing.expect(cell != 4);
+    // Reuse the scratch queue in the opposite direction.
+    try std.testing.expect(findPath(alloc, &grid, &scratch, 8, 0, &path));
+    try std.testing.expectEqual(@as(u32, 0), path.items[path.items.len - 1]);
 }

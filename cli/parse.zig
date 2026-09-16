@@ -9,13 +9,9 @@ pub const ParseError = error{
     MissingValue,
 };
 
-pub fn parseCommand(alloc: Allocator) !Command {
-    var it = try std.process.argsWithAllocator(alloc);
-    defer it.deinit();
-
-    _ = it.next(); // exe name
-
-    const first = it.next() orelse return .{ .help = {} };
+/// Returned strings borrow from args.
+pub fn parseCommand(args: []const [:0]const u8) !Command {
+    const first = if (args.len > 1) args[1] else return .{ .help = {} };
 
     // Global flags (no subcommand required)
     if (eql(u8, first, "help") or eql(u8, first, "-h") or eql(u8, first, "--help"))
@@ -31,11 +27,14 @@ pub fn parseCommand(alloc: Allocator) !Command {
     // Parse: zixel new <name> [flags...]
     var stop_options = false;
 
-    const name = it.next() orelse return ParseError.MissingValue;
+    if (args.len < 3) return ParseError.MissingValue;
+    const name = args[2];
 
     var sample: ?[]const u8 = null;
 
-    while (it.next()) |arg| {
+    var index: usize = 3;
+    while (index < args.len) : (index += 1) {
+        const arg = args[index];
         if (!stop_options) {
             if (eql(u8, arg, "--")) {
                 stop_options = true;
@@ -45,7 +44,9 @@ pub fn parseCommand(alloc: Allocator) !Command {
                 return .{ .help = {} }; // or you can introduce help topic later
             }
             if (eql(u8, arg, "--sample")) {
-                sample = it.next() orelse return ParseError.MissingValue;
+                index += 1;
+                if (index == args.len) return ParseError.MissingValue;
+                sample = args[index];
                 continue;
             }
             // Unknown flag

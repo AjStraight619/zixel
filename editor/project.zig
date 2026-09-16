@@ -1,9 +1,8 @@
 const std = @import("std");
-const fs = std.fs;
 
-pub fn scaffold(alloc: std.mem.Allocator, root_path: []const u8) !void {
-    const cwd = fs.cwd();
-    try cwd.makePath(root_path);
+pub fn scaffold(alloc: std.mem.Allocator, io: std.Io, root_path: []const u8) !void {
+    const cwd = std.Io.Dir.cwd();
+    try cwd.createDirPath(io, root_path);
 
     const folders = [_][]const u8{
         "assets",
@@ -15,7 +14,7 @@ pub fn scaffold(alloc: std.mem.Allocator, root_path: []const u8) !void {
     for (folders) |f| {
         const full_path = try std.fs.path.join(alloc, &.{ root_path, f });
         defer alloc.free(full_path);
-        try cwd.makePath(full_path);
+        try cwd.createDirPath(io, full_path);
     }
 
     const default_config =
@@ -35,9 +34,9 @@ pub fn scaffold(alloc: std.mem.Allocator, root_path: []const u8) !void {
 
     const project_json_path = try std.fs.path.join(alloc, &.{ root_path, "settings/project.json" });
     defer alloc.free(project_json_path);
-    try cwd.writeFile(.{ .sub_path = project_json_path, .data = default_config });
+    try cwd.writeFile(io, .{ .sub_path = project_json_path, .data = default_config });
 
     const main_scene_path = try std.fs.path.join(alloc, &.{ root_path, "assets/scenes/main.json" });
     defer alloc.free(main_scene_path);
-    try cwd.writeFile(.{ .sub_path = main_scene_path, .data = default_scene });
+    try cwd.writeFile(io, .{ .sub_path = main_scene_path, .data = default_scene });
 }

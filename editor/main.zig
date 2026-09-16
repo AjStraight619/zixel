@@ -20,6 +20,7 @@ const Zixel = struct {
 };
 
 var app: Zixel = undefined;
+var project_path: []const u8 = undefined;
 
 fn onInit() callconv(.c) void {
     sokol.gfx.setup(.{
@@ -28,24 +29,7 @@ fn onInit() callconv(.c) void {
     });
     simgui.setup(.{ .logger = .{ .func = sokol.log.func } });
 
-    var raw_path: []const u8 = ".";
-    if (std.process.argsAlloc(std.heap.c_allocator)) |args| {
-        if (args.len > 1) {
-            raw_path = args[1];
-        }
-    } else |err| {
-        std.debug.print("Warning: Could not parse arguments: {}\n", .{err});
-    }
-
-    // We try to create the project structure. If the folder doesn't exist, this makes it.
-    project.scaffold(std.heap.c_allocator, raw_path) catch |err| {
-        std.debug.panic("Failed to scaffold project at '{s}': {}\n", .{ raw_path, err });
-    };
-
-    // Now that we know the folder exists, we get the real absolute path.
-    const abs_game_path = std.fs.cwd().realpathAlloc(std.heap.c_allocator, raw_path) catch |err| {
-        std.debug.panic("Could not resolve absolute path for '{s}': {}\n", .{ raw_path, err });
-    };
+    const abs_game_path = project_path;
 
     // Pass the absolute path. The editor will duplicate it.
     app.editor = Editor.init(std.heap.c_allocator, abs_game_path) catch |err| {
@@ -67,6 +51,7 @@ fn onInit() callconv(.c) void {
     app.editor.world = &app.engine.world;
 
     if (std.fmt.allocPrint(std.heap.c_allocator, "Editor Initialized. Project: {s}", .{abs_game_path})) |msg| {
+        defer std.heap.c_allocator.free(msg);
         app.editor.log(msg);
     } else |_| {
         app.editor.log("Editor Initialized");
@@ -120,7 +105,12 @@ fn onCleanup() callconv(.c) void {
     sokol.gfx.shutdown();
 }
 
-pub fn main() void {
+pub fn main(init: std.process.Init) !void {
+    const alloc = init.arena.allocator();
+    const args = try init.minimal.args.toSlice(alloc);
+    const raw_path = if (args.len > 1) args[1] else ".";
+    try project.scaffold(alloc, init.io, raw_path);
+    project_path = try std.Io.Dir.cwd().realPathFileAlloc(init.io, raw_path, alloc);
     sokol.app.run(.{
         .init_cb = onInit,
         .frame_cb = onFrame,

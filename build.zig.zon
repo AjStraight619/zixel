@@ -2,20 +2,24 @@
     .name = .zixel_new,
     .version = "0.1.0",
     .fingerprint = 0x9090fe3f9cd9d4d2,
-    .minimum_zig_version = "0.15.2",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#def7b27f82d04c3b690a49913f4979c8dd46a103",
-            .hash = "sokol-0.1.0-pb1HKw6FNgBFHFiAYJS8iNOmFkHCFjKxtRtZR4WD7k2q",
+            .url = "git+https://github.com/floooh/sokol-zig.git#ff40f04d4f51c73b2bf460d87fd2d7aa0dedc22f",
+            .hash = "sokol-0.1.0-pb1HKygbQQCINV-qSe4SFm92QWaT_95VpWTJkwYqzOrX",
         },
         .cimgui = .{
-            .url = "git+https://github.com/floooh/dcimgui.git#6c2c7f0452d9f44c95094c3f7dc2969c2c6a5e1a",
-            .hash = "cimgui-0.1.0-44ClkQYjlQCl0iQX5wlquJ-mFZMqSxXA3hE2MG_3i1BT",
+            .url = "git+https://github.com/floooh/dcimgui.git#3ce8ee7bf4fe088a7687ee7640520f1af41ca862",
+            .hash = "cimgui-0.1.0-44ClkR8dmgDqqnfloyLE1bUAtl4zSKTT1wxaHSEC0ikV",
         },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
+        "editor",
+        "cli",
+        "samples",
+        "README.md",
     },
 }

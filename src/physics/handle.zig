@@ -26,14 +26,7 @@ pub const BodyHandle = struct {
         return self.index == other.index and self.generation == other.generation;
     }
 
-    pub fn format(
-        self: BodyHandle,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
+    pub fn format(self: BodyHandle, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (!self.isValid()) {
             try writer.writeAll("BodyHandle(invalid)");
         } else {
