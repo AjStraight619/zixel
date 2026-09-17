@@ -12,8 +12,9 @@ pub const Color = @import("Color.zig");
 
 clear_color: Color = .{ .r = 0.1, .g = 0.1, .b = 0.15, .a = 1 },
 
-/// DO NOT MODIFY THIS VARIABLE
-_owns_pass: bool = true,
+/// Whether this renderer begins and ends the graphics pass.
+/// Set false when the host application owns the pass, as the editor does.
+owns_pass: bool = true,
 
 pub fn init(self: *Renderer, setup_gfx: bool) void {
     _ = self;
@@ -40,7 +41,7 @@ pub fn beginFrame(self: *Renderer) void {
 
     self.setupMatrices();
 
-    if (self._owns_pass) {
+    if (self.owns_pass) {
         sg.beginPass(.{
             .action = .{
                 .colors = .{
@@ -78,7 +79,7 @@ fn setupMatrices(_: *Renderer) void {
 
 pub fn endFrame(self: *Renderer) void {
     sgl.draw();
-    if (self._owns_pass) {
+    if (self.owns_pass) {
         sg.endPass();
         sg.commit();
     }

@@ -121,12 +121,12 @@ pub const Key = enum(i32) {
     _,
 };
 
-const MAX_KEYS = 512;
+const max_keys = 512;
 
 // Key state
-keys_down: [MAX_KEYS]bool = [_]bool{false} ** MAX_KEYS,
-keys_pressed: [MAX_KEYS]bool = [_]bool{false} ** MAX_KEYS,
-keys_released: [MAX_KEYS]bool = [_]bool{false} ** MAX_KEYS,
+keys_down: [max_keys]bool = [_]bool{false} ** max_keys,
+keys_pressed: [max_keys]bool = [_]bool{false} ** max_keys,
+keys_released: [max_keys]bool = [_]bool{false} ** max_keys,
 
 // Mouse state
 mouse_x: f32 = 0,
@@ -251,7 +251,7 @@ pub fn endFrame(self: *Input) void {
 fn keyIndex(self: *const Input, key: Key) ?usize {
     _ = self;
     const idx: i32 = @intFromEnum(key);
-    if (idx >= 0 and idx < MAX_KEYS) {
+    if (idx >= 0 and idx < max_keys) {
         return @intCast(idx);
     }
     return null;
@@ -259,7 +259,7 @@ fn keyIndex(self: *const Input, key: Key) ?usize {
 
 fn keyIndexFromInt(self: *const Input, key_int: i32) ?usize {
     _ = self;
-    if (key_int >= 0 and key_int < MAX_KEYS) {
+    if (key_int >= 0 and key_int < max_keys) {
         return @intCast(key_int);
     }
     return null;

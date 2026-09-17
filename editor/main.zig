@@ -6,7 +6,7 @@ const zixel = @import("zixel_new");
 const Allocator = std.mem.Allocator;
 
 const Editor = @import("Editor.zig");
-const toolbar = @import("toolbar/toolbar.zig");
+const toolbar = @import("toolbar.zig");
 const project = @import("project.zig");
 
 const hierarchy = @import("panels/hierarchy.zig");
@@ -45,7 +45,7 @@ fn onInit() callconv(.c) void {
     };
 
     app.engine.renderer.init(false);
-    app.engine.renderer._owns_pass = false;
+    app.engine.renderer.owns_pass = false;
 
     // Link the editor to the engine's world
     app.editor.world = &app.engine.world;

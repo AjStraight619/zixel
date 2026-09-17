@@ -4,7 +4,7 @@ const Allocator = std.mem.Allocator;
 const Order = std.math.Order;
 const ArrayList = std.ArrayList;
 
-pub const NO_PARENT: u32 = std.math.maxInt(u32);
+pub const no_parent: u32 = std.math.maxInt(u32);
 
 pub const Scratch = struct {
     g_score: []f32,
@@ -37,7 +37,7 @@ pub const Scratch = struct {
 
     pub fn reset(self: *Scratch) void {
         for (self.g_score) |*g| g.* = math.inf(f32);
-        for (self.parent) |*p| p.* = NO_PARENT;
+        for (self.parent) |*p| p.* = no_parent;
         @memset(self.closed, false);
         self.open.clearRetainingCapacity();
     }
@@ -136,7 +136,7 @@ fn reconstructPath(
         if (cur == start) break;
 
         const p = scratch.parent[cur];
-        if (p == NO_PARENT) return false;
+        if (p == no_parent) return false;
         cur = p;
     }
 
@@ -169,7 +169,7 @@ pub fn findPath(
 
     // Init
     scratch.g_score[start] = 0;
-    scratch.parent[start] = NO_PARENT;
+    scratch.parent[start] = no_parent;
     const f0 = heuristic(start, goal, width);
     scratch.open.push(alloc, .{ .f = f0, .idx = start }) catch return false;
 

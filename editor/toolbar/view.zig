@@ -1,5 +1,5 @@
 const ig = @import("cimgui");
-const Editor = @import("../../Editor.zig");
+const Editor = @import("../Editor.zig");
 
 pub fn draw(editor: *Editor) void {
     if (ig.igBeginMenu("View")) {

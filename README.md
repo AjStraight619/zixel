@@ -55,15 +55,21 @@ hardware, and workload. See [the experiment report](docs/physics-benchmarks.md).
 
 ## Layout
 
-- `src/root.zig`: public runtime API used by games and the editor.
-- `src/engine/`: engine lifecycle, scenes, entity storage (`World`), and rendering.
-- `src/physics/`: `Physics` simulation, body types, broadphase, and collision response.
-- `src/core/` and `src/math/`: algorithms and math primitives.
+- `src/root.zig`: public runtime entry point used by games and the editor.
+- `src/engine.zig` and `src/engine/`: engine lifecycle, scenes, entity storage, and rendering.
+- `src/physics.zig` and `src/physics/`: simulation, bodies, and collision APIs.
+- `src/math.zig` and `src/math/`: vectors, bounds, and shape definitions.
+- `src/core.zig` and `src/core/`: reusable support code; `core/nav.zig` exposes navigation.
 - `editor/`: editor application, panels, toolbar, and dialogs.
 - `cli/`: command-line application (`new` is currently a stub).
 - `samples/`: runnable games demonstrating the runtime API.
 
-The application draws the stateless toolbar; editor state does not import it.
+Namespace entry files explicitly export their public declarations. The root also
+exports common types directly: `zixel.Engine` and `zixel.engine.Engine` refer to
+the same type, as do `zixel.Physics` and `zixel.physics.Physics`.
+
+The application draws the stateless `editor/toolbar.zig`; its supporting modules
+live in `editor/toolbar/`. Editor state does not import the toolbar.
 World exposes a borrowed body iterator; physics and broadphase consume it without
 importing World. Entity drawing lives in `engine/draw_entities.zig`.
 CLI parsing and project creation share `cli/NewArgs.zig`.
@@ -93,9 +99,46 @@ and does not introduce an ECS or separate body storage.
 
 ## Naming
 
-Files representing instantiated types use `TitleCase` (`Entity.zig`, `Vec2.zig`).
-Namespace files use `snake_case` (`narrowphase.zig`, `file_menu.zig`). Functions
-use `camelCase`; variables and fields use `snake_case`.
+Follow the [Zig 0.16 naming guide](https://ziglang.org/documentation/0.16.0/#Names)
+and the standard library's layout:
+
+- Files with top-level instance fields use `TitleCase`, such as `Engine.zig` and
+  `Vec2.zig`. The file itself represents the type.
+- Namespace files use `snake_case`, such as `physics.zig`, `narrowphase.zig`, and
+  `play_controls.zig`. A namespace can contain types without becoming a type file.
+- Types and functions returning types use `TitleCase`. Other functions use
+  `camelCase`. Values, including constants and struct fields, use `snake_case`.
+  For example, the pathfinding sentinel is `astar.no_parent`. Acronyms follow
+  the same rules: `Aabb`, not `AABB`.
+- General grouping directories use `snake_case`. Namespace entry files sit beside
+  matching directories when they have supporting files: `physics.zig` and `physics/`.
+- Type-specific supporting directories can match the type's casing, following
+  the standard library's `Io.zig` and `Io/`, or `Io/Reader.zig` and `Io/Reader/`.
+  Create these when splitting a type's implementation, rather than capitalizing
+  every directory containing types.
+- A directory does not create a Zig namespace or establish runtime ownership.
+  Imports and public declarations establish the API; fields and lifecycle code
+  establish ownership. Implementation files import their dependencies directly
+  instead of importing the public entry point back into its own implementation.
+
+For example, the toolbar uses this layout:
+
+```text
+editor/
+  Editor.zig
+  toolbar.zig
+  toolbar/
+    file.zig
+    file/
+      NewSceneDialog.zig
+    asset.zig
+    view.zig
+    play_controls.zig
+```
+
+The renderer's `owns_pass` field describes whether it controls the graphics pass;
+the editor sets it to false because the application controls that pass. Fields
+are not made private by adding an underscore prefix.
 
 ## Entity definitions
 

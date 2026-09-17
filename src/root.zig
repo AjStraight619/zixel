@@ -1,38 +1,36 @@
-pub const Engine = @import("engine/Engine.zig");
-pub const Ctx = @import("engine/Ctx.zig");
+//! Shared runtime API for games and the editor.
+// Public namespaces mirror their source directories.
+pub const engine = @import("engine.zig");
+pub const core = @import("core.zig");
+pub const physics = @import("physics.zig");
+pub const math = @import("math.zig");
 
-pub const Input = @import("engine/Input.zig");
-pub const Renderer = @import("engine/Renderer.zig");
-pub const Renderable = @import("engine/Renderable.zig");
-pub const Scene = @import("engine/Scene.zig");
-pub const Sprite = @import("engine/Sprite.zig");
+pub const Engine = engine.Engine;
+pub const Ctx = engine.Ctx;
+
+pub const Input = engine.Input;
+pub const Renderer = engine.Renderer;
+pub const Renderable = engine.Renderable;
+pub const Scene = engine.Scene;
+pub const Sprite = engine.Sprite;
 
 // Entity system
-pub const Entity = @import("engine/Entity.zig");
-pub const EntityDef = @import("engine/Entity.zig").EntityDef;
-pub const OwnedEntityDef = @import("engine/Entity.zig").OwnedEntityDef;
-pub const EntityHandle = @import("engine/Entity.zig").EntityHandle;
+pub const Entity = engine.Entity;
+pub const EntityDef = engine.EntityDef;
+pub const OwnedEntityDef = engine.OwnedEntityDef;
+pub const EntityHandle = engine.EntityHandle;
 
-// Core (pure libs / algorithms)
-pub const core = struct {
-    pub const nav = struct {
-        pub const Grid = @import("core/nav/Grid.zig");
-        pub const astar = @import("core/nav/astar.zig");
-        pub const Nav = @import("core/nav/Nav.zig");
-    };
-};
-
-// Physics
-pub const physics = struct {
-    pub const Physics = @import("physics/Physics.zig");
-    pub const Body = @import("physics/Body.zig");
-    pub const BodyKind = @import("physics/Body.zig").BodyKind;
-    pub const BodyOptions = @import("physics/Body.zig").BodyOptions;
-    pub const PhysicsShape = @import("math/shapes.zig").PhysicsShape;
-    pub const collision = @import("physics/collision.zig");
-    pub const response = @import("physics/response.zig");
-    pub const narrowphase = @import("physics/narrowphase.zig");
-};
+// Convenience exports
+pub const Vec2 = math.Vec2;
+pub const Color = engine.Color;
+pub const World = engine.World;
+pub const Physics = physics.Physics;
+pub const drawEntities = engine.drawEntities;
+pub const Body = physics.Body;
+pub const BodyKind = physics.BodyKind;
+pub const PhysicsShape = physics.PhysicsShape;
+pub const Key = Input.Key;
+pub const MouseButton = Input.MouseButton;
 
 test {
     _ = @import("engine/world_physics_test.zig");
@@ -43,22 +41,3 @@ test {
     _ = @import("engine/Entity.zig");
     _ = @import("engine/World.zig");
 }
-
-// Math
-pub const math = struct {
-    pub const Vec2 = @import("math/Vec2.zig");
-    pub const Aabb = @import("math/Aabb.zig");
-    pub const shapes = @import("math/shapes.zig");
-};
-
-// Convenience exports
-pub const Vec2 = math.Vec2;
-pub const Color = Renderer.Color;
-pub const World = @import("engine/World.zig");
-pub const Physics = physics.Physics;
-pub const drawEntities = @import("engine/draw_entities.zig").draw;
-pub const Body = physics.Body;
-pub const BodyKind = physics.BodyKind;
-pub const PhysicsShape = physics.PhysicsShape;
-pub const Key = Input.Key;
-pub const MouseButton = Input.MouseButton;

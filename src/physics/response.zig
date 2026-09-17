@@ -6,8 +6,8 @@ const Body = @import("Body.zig");
 const ContactManifold = @import("narrowphase.zig").ContactManifold;
 
 // Small thresholds to avoid doing tiny useless corrections (micro-jitter).
-const TANGENT_EPS: f32 = 1e-6;
-const TANGENT_DEADZONE: f32 = 1e-4;
+const tangent_eps: f32 = 1e-6;
+const tangent_deadzone: f32 = 1e-4;
 
 /// We calculate this ONCE per body per collision to avoid repeated lookups.
 const SolverData = struct {
@@ -144,12 +144,12 @@ fn applyFrictionImpulse(
     const vn = vrel_old.dot(m.normal);
     const tangent = vrel_old.sub(m.normal.scale(vn));
 
-    if (tangent.length() < TANGENT_EPS) return;
+    if (tangent.length() < tangent_eps) return;
     const t_hat = tangent.normalize();
 
     // 2. Check tangential velocity magnitude
     const vt = vrel_old.dot(t_hat);
-    if (@abs(vt) < TANGENT_DEADZONE) return;
+    if (@abs(vt) < tangent_deadzone) return;
 
     // 3. Compute "K" along the Tangent
     const k = sd1.getEffectiveMass(t_hat) + sd2.getEffectiveMass(t_hat);
