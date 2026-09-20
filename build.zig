@@ -50,24 +50,6 @@ pub fn build(b: *std.Build) !void {
     });
     zixel_editor_mod.addImport("sokol", dep_sokol_editor.module("sokol"));
 
-    const game_exe = b.addExecutable(.{
-        .name = "zixel_game",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    game_exe.root_module.addImport("zixel_new", zixel_game_mod); // Use Game Module
-    game_exe.root_module.addImport("sokol", dep_sokol_game.module("sokol"));
-    game_exe.root_module.addOptions("zixel_buildinfo", buildinfo);
-    b.installArtifact(game_exe);
-
-    // Run Command for Game
-    const run_step = b.step("run", "Run the game");
-    const run_cmd = b.addRunArtifact(game_exe);
-    run_step.dependOn(&run_cmd.step);
-
     const editor_exe = b.addExecutable(.{
         .name = "zixel_editor",
         .root_module = b.createModule(.{
@@ -84,8 +66,10 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(editor_exe);
 
     // Run Command for Editor
+    const run_step = b.step("run", "Run the Zixel editor");
     const run_editor_step = b.step("editor", "Run the Zixel editor");
     const run_editor_cmd = b.addRunArtifact(editor_exe);
+    run_step.dependOn(&run_editor_cmd.step);
     run_editor_step.dependOn(&run_editor_cmd.step);
 
     const cli_exe = b.addExecutable(.{
@@ -105,7 +89,6 @@ pub fn build(b: *std.Build) !void {
     if (b.args) |args| {
         run_editor_cmd.addArgs(args);
         run_cli_cmd.addArgs(args);
-        run_cmd.addArgs(args);
     }
     run_cli_step.dependOn(&run_cli_cmd.step);
 
