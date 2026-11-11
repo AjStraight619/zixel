@@ -68,10 +68,16 @@ pub fn tick(self: *Engine) void {
         if (self.scene) |*s| world_blocked = updateRecursive(s, fdt);
         if (!world_blocked) self.physics.update(self.world.bodies(), fdt);
 
+        // Presses, releases and scroll are consumed by the first step that sees
+        // them, so one click never fires again in a later step of this frame.
+        // Frames without a step keep them for the next one.
+        self.input.endFrame();
         ran_fixed_step = true;
     }
 
-    if (ran_fixed_step) self.input.endFrame();
+    // Nothing is simulated while paused; drop edges instead of replaying every
+    // press made during the pause on the first step after it.
+    if (!ran_fixed_step and self.time.paused) self.input.endFrame();
 }
 
 /// Renders the current scene to the active framebuffer.

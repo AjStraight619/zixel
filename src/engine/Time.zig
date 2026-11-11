@@ -70,14 +70,22 @@ pub fn beginFrame(self: *Time) void {
     if (dt_raw64 < 0) dt_raw64 = 0;
     if (dt_raw64 > @as(f64, self.cfg.max_dt)) dt_raw64 = @as(f64, self.cfg.max_dt);
 
-    const dt_raw: f32 = @floatCast(dt_raw64);
+    self.advance(@floatCast(dt_raw64));
+}
+
+/// Applies one frame's clamped, unscaled delta. Split from `beginFrame` so the
+/// pause/step logic can be tested without the platform clock.
+fn advance(self: *Time, dt_raw: f32) void {
     self.dt_raw = dt_raw;
 
     // Apply pause + optional single-step
     if (self.paused) {
         if (self.step_once) {
             self.step_once = false;
-            self.dt = dt_raw * self.cfg.time_scale;
+            // A requested step always advances the simulation by exactly one
+            // fixed step; a single rendered frame is usually shorter than that
+            // and would leave the accumulator below the threshold.
+            self.dt = if (self.cfg.fixed_dt > 0) self.cfg.fixed_dt else dt_raw * self.cfg.time_scale;
         } else {
             self.dt = 0;
         }
@@ -129,6 +137,7 @@ pub fn togglePause(self: *Time) void {
     self.paused = !self.paused;
 }
 
+/// While paused, run exactly one fixed step on the next frame.
 pub fn stepFrame(self: *Time) void {
     self.step_once = true;
 }
@@ -159,4 +168,21 @@ test "popFixedStep consumes accum and alpha clamps" {
 
     t.accum = 1.0;
     try std.testing.expectApproxEqAbs(@as(f32, 1.0), t.alpha(), 0.0001);
+}
+
+test "stepping while paused runs exactly one fixed step per request" {
+    var t = Time{ .cfg = .{ .fixed_dt = 1.0 / 60.0 } };
+    t.pause();
+    // A 144 Hz frame is shorter than a fixed step.
+    t.advance(1.0 / 144.0);
+    try std.testing.expect(!t.popFixedStep());
+
+    t.stepFrame();
+    t.advance(1.0 / 144.0);
+    try std.testing.expect(t.popFixedStep());
+    try std.testing.expect(!t.popFixedStep());
+
+    // The request is one-shot.
+    t.advance(1.0 / 144.0);
+    try std.testing.expect(!t.popFixedStep());
 }

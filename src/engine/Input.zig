@@ -206,8 +206,9 @@ pub fn handleEvent(self: *Input, event: *const sapp.Event) void {
         .KEY_UP => {
             const key_int: i32 = @intFromEnum(event.key_code);
             if (self.keyIndexFromInt(key_int)) |idx| {
+                // Only report a release for a key this input saw go down.
+                if (self.keys_down[idx]) self.keys_released[idx] = true;
                 self.keys_down[idx] = false;
-                self.keys_released[idx] = true;
             }
         },
         .MOUSE_DOWN => {
@@ -222,8 +223,8 @@ pub fn handleEvent(self: *Input, event: *const sapp.Event) void {
         .MOUSE_UP => {
             const btn: usize = @intCast(@intFromEnum(event.mouse_button));
             if (btn < 3) {
+                if (self.mouse_down[btn]) self.mouse_released[btn] = true;
                 self.mouse_down[btn] = false;
-                self.mouse_released[btn] = true;
             }
         },
         .MOUSE_MOVE => {
@@ -231,14 +232,30 @@ pub fn handleEvent(self: *Input, event: *const sapp.Event) void {
             self.mouse_y = event.mouse_y;
         },
         .MOUSE_SCROLL => {
-            self.scroll_x = event.scroll_x;
-            self.scroll_y = event.scroll_y;
+            // Several scroll events can arrive before the next step reads them.
+            self.scroll_x += event.scroll_x;
+            self.scroll_y += event.scroll_y;
         },
+        // The matching key-up events go to whichever window has focus next.
+        .UNFOCUSED => self.releaseAll(),
         else => {},
     }
 }
 
-/// Clear per-frame state - called at end of frame by Engine
+/// Release every held key and button, reporting each as released.
+pub fn releaseAll(self: *Input) void {
+    for (&self.keys_down, &self.keys_released) |*down, *released| {
+        if (down.*) released.* = true;
+        down.* = false;
+    }
+    for (&self.mouse_down, &self.mouse_released) |*down, *released| {
+        if (down.*) released.* = true;
+        down.* = false;
+    }
+}
+
+/// Clear edge-triggered state (pressed, released, scroll). The engine calls
+/// this after each fixed step that has had the chance to read it.
 pub fn endFrame(self: *Input) void {
     @memset(&self.keys_pressed, false);
     @memset(&self.keys_released, false);
@@ -263,4 +280,43 @@ fn keyIndexFromInt(self: *const Input, key_int: i32) ?usize {
         return @intCast(key_int);
     }
     return null;
+}
+
+fn testEvent(kind: sapp.EventType) sapp.Event {
+    var event = std.mem.zeroes(sapp.Event);
+    event.type = kind;
+    return event;
+}
+
+test "press and release edges, scroll accumulation, and focus loss" {
+    var input = Input{};
+    var key_down = testEvent(.KEY_DOWN);
+    key_down.key_code = .SPACE;
+    var key_up = testEvent(.KEY_UP);
+    key_up.key_code = .SPACE;
+
+    // A release for a key that was never seen going down is ignored.
+    input.handleEvent(&key_up);
+    try std.testing.expect(!input.isKeyReleased(.space));
+
+    input.handleEvent(&key_down);
+    try std.testing.expect(input.isKeyPressed(.space));
+    try std.testing.expect(input.isKeyDown(.space));
+    input.endFrame();
+    try std.testing.expect(!input.isKeyPressed(.space));
+    try std.testing.expect(input.isKeyDown(.space));
+
+    var scroll = testEvent(.MOUSE_SCROLL);
+    scroll.scroll_y = 1.5;
+    input.handleEvent(&scroll);
+    input.handleEvent(&scroll);
+    try std.testing.expectEqual(@as(f32, 3), input.scrollDelta().y);
+
+    var unfocused = testEvent(.UNFOCUSED);
+    input.handleEvent(&unfocused);
+    try std.testing.expect(!input.isKeyDown(.space));
+    try std.testing.expect(input.isKeyReleased(.space));
+    input.endFrame();
+    try std.testing.expectEqual(@as(f32, 0), input.scrollDelta().y);
+    try std.testing.expect(!input.isKeyReleased(.space));
 }
