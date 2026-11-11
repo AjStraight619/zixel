@@ -79,40 +79,45 @@ fn getOverlap(proj1: Projection, proj2: Projection) ?f32 {
     return if (overlap > 0.0) overlap else null;
 }
 
-/// Find the contact point between two colliding rectangles.
-/// Uses the "incident face" method: find the vertices that penetrate deepest.
-fn findContactPoint(corners1: *const [4]Vec2, corners2: *const [4]Vec2, normal: Vec2) Vec2 {
-    // Find vertices from rect2 that are "inside" rect1 (penetrating along normal)
-    // These are vertices with the smallest projection onto the normal
-    var best_vertex: Vec2 = corners2[0];
-    var best_proj: f32 = corners2[0].dot(normal);
+/// Whether a world-space point lies inside a rectangle given by its corners
+/// (in getRectangleCorners order), with a small tolerance. Works on the edge
+/// vectors directly, so it needs no trigonometry or square roots.
+fn rectangleContainsPoint(rect: Rectangle, corners: *const [4]Vec2, point: Vec2) bool {
+    const tolerance = 0.01;
+    const rel = point.sub(corners[0]);
+    // Distance along each edge from corner 0, scaled by that edge's length.
+    const along_w = rel.dot(corners[1].sub(corners[0]));
+    const along_h = rel.dot(corners[3].sub(corners[0]));
+    return along_w >= -tolerance * rect.width and along_w <= (rect.width + tolerance) * rect.width and
+        along_h >= -tolerance * rect.height and along_h <= (rect.height + tolerance) * rect.height;
+}
 
-    for (corners2[1..]) |corner| {
-        const proj = corner.dot(normal);
-        if (proj < best_proj) {
-            best_proj = proj;
-            best_vertex = corner;
+/// Contact point for two overlapping rectangles: the centre of every corner of
+/// one rectangle that lies inside the other. It always falls inside the overlap
+/// and does not depend on which rectangle is passed first, so a small box on a
+/// wide floor gets a contact under the box rather than at the floor's centre.
+/// Returns null when no corner is inside the other shape (two bars crossing).
+fn overlapContactPoint(
+    rect1: Rectangle,
+    corners1: *const [4]Vec2,
+    rect2: Rectangle,
+    corners2: *const [4]Vec2,
+) ?Vec2 {
+    var sum = Vec2.zero;
+    var count: f32 = 0.0;
+    for (corners1) |corner| {
+        if (rectangleContainsPoint(rect2, corners2, corner)) {
+            sum = sum.add(corner);
+            count += 1.0;
         }
     }
-
-    // Also check corners1 (penetrating in opposite direction)
-    var best_vertex1: Vec2 = corners1[0];
-    var best_proj1: f32 = corners1[0].dot(normal.negate());
-
-    for (corners1[1..]) |corner| {
-        const proj = corner.dot(normal.negate());
-        if (proj < best_proj1) {
-            best_proj1 = proj;
-            best_vertex1 = corner;
+    for (corners2) |corner| {
+        if (rectangleContainsPoint(rect1, corners1, corner)) {
+            sum = sum.add(corner);
+            count += 1.0;
         }
     }
-
-    // Return midpoint between the two deepest penetrating vertices
-    // This gives a stable contact point on the collision surface
-    return Vec2{
-        .x = (best_vertex.x + best_vertex1.x) / 2.0,
-        .y = (best_vertex.y + best_vertex1.y) / 2.0,
-    };
+    return if (count > 0.0) sum.scale(1.0 / count) else null;
 }
 
 fn satRectangleRectangle(rect1: PhysicsShape, pos1: Vec2, rot1: f32, rect2: PhysicsShape, pos2: Vec2, rot2: f32) ?ContactManifold {
@@ -170,21 +175,19 @@ fn satRectangleRectangle(rect1: PhysicsShape, pos1: Vec2, rot1: f32, rect2: Phys
     }
 
     // Determine Contact Point
-    // The contact point is the deepest vertex of the "Incident" body
-    // into the "Reference" body.
-    var contact_point: Vec2 = undefined;
-
-    if (axis_source == 0) {
-        // Axis came from Rect1 (Reference).
-        // Normal points Rect1 -> Rect2.
-        // We want the point on Rect2 (Incident) that is deepest "backwards" against the normal.
-        contact_point = findSupportPoint(&corners2, separation_axis.negate());
-    } else {
-        // Axis came from Rect2 (Reference).
-        // Normal points Rect1 -> Rect2.
-        // We want the point on Rect1 (Incident) that is deepest "forwards" along the normal.
-        contact_point = findSupportPoint(&corners1, separation_axis);
-    }
+    const contact_point = overlapContactPoint(
+        rect1.rectangle,
+        &corners1,
+        rect2.rectangle,
+        &corners2,
+    ) orelse if (axis_source == 0)
+        // No corner of either rectangle is inside the other. Fall back to the
+        // deepest vertex of the incident body against the reference face.
+        // Axis from Rect1 (reference): deepest point of Rect2 against the normal.
+        findSupportPoint(&corners2, separation_axis.negate())
+    else
+        // Axis from Rect2 (reference): deepest point of Rect1 along the normal.
+        findSupportPoint(&corners1, separation_axis);
 
     return ContactManifold.init(contact_point, separation_axis, min_overlap);
 }
@@ -396,4 +399,66 @@ fn findSupportPoint(corners: *const [4]Vec2, direction: Vec2) Vec2 {
     }
 
     return sum.scale(1.0 / count);
+}
+
+test "box on a wide floor gets a contact under the box in either body order" {
+    const box = PhysicsShape.rect(20, 20);
+    const floor = PhysicsShape.rect(1200, 20);
+    const box_pos = Vec2.init(500, 0);
+    const floor_pos = Vec2.init(0, 19);
+
+    const box_first = checkShapesCollision(box, box_pos, 0, floor, floor_pos, 0).?;
+    const floor_first = checkShapesCollision(floor, floor_pos, 0, box, box_pos, 0).?;
+
+    for ([_]ContactManifold{ box_first, floor_first }) |m| {
+        try std.testing.expectApproxEqAbs(@as(f32, 500), m.point.x, 0.001);
+        try std.testing.expectApproxEqAbs(@as(f32, 10), m.point.y, 0.001);
+        try std.testing.expectApproxEqAbs(@as(f32, 1), m.penetration, 0.001);
+    }
+    // The normal always points from the first shape to the second.
+    try std.testing.expectApproxEqAbs(@as(f32, 1), box_first.normal.y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, -1), floor_first.normal.y, 0.001);
+}
+
+test "box overhanging a ledge is contacted inside the overlap, not under its centre" {
+    // The ledge ends at x = 10; the box spans x = 5..25, so only 5..10 is supported.
+    const m = checkShapesCollision(
+        PhysicsShape.rect(20, 20),
+        Vec2.init(15, 0),
+        0,
+        PhysicsShape.rect(100, 20),
+        Vec2.init(-40, 19),
+        0,
+    ).?;
+    try std.testing.expectApproxEqAbs(@as(f32, 7.5), m.point.x, 0.001);
+    try std.testing.expect(m.point.x < 15);
+}
+
+test "crossing bars with no contained corners still produce a contact" {
+    const m = checkShapesCollision(
+        PhysicsShape.rect(100, 10),
+        Vec2.zero,
+        0,
+        PhysicsShape.rect(10, 100),
+        Vec2.zero,
+        0,
+    ).?;
+    try std.testing.expect(std.math.isFinite(m.point.x) and std.math.isFinite(m.point.y));
+    try std.testing.expect(m.penetration > 0);
+}
+
+test "rotated boxes: a single penetrating corner is the contact" {
+    // A square rotated 45 degrees, its lowest corner dipping 1 unit into a floor.
+    const half_diagonal = 10.0 * std.math.sqrt2;
+    const m = checkShapesCollision(
+        PhysicsShape.rect(20, 20),
+        Vec2.init(30, -half_diagonal + 1),
+        std.math.pi / 4.0,
+        PhysicsShape.rect(400, 20),
+        Vec2.init(0, 10),
+        0,
+    ).?;
+    try std.testing.expectApproxEqAbs(@as(f32, 30), m.point.x, 0.01);
+    try std.testing.expectApproxEqAbs(@as(f32, 1), m.point.y, 0.01);
+    try std.testing.expectApproxEqAbs(@as(f32, 1), m.penetration, 0.01);
 }
