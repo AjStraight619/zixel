@@ -25,20 +25,34 @@ const SolverData = struct {
         const rn = self.r.cross2(dir);
         return self.inv_mass + (rn * rn) * self.inv_inertia;
     }
+
+    /// The same contact, with the body treated as infinitely heavy.
+    fn immovable(self: SolverData) SolverData {
+        return .{ .inv_mass = 0.0, .inv_inertia = 0.0, .r = self.r };
+    }
 };
+
+/// When a load resting on a sleeping body should leave it asleep.
+pub const SleepPolicy = struct {
+    /// Unit gravity direction, or null when there is no gravity. With null,
+    /// every non-zero impulse wakes a sleeping body.
+    down: ?Vec2 = null,
+    /// A dynamic body pressing down on a sleeper more slowly than this (world
+    /// units/s) is resting on it rather than hitting it.
+    wake_speed: f32 = 0.0,
+};
+
+/// Velocity of the body's material at the contact point.
+fn contactVelocity(body: *const Body, sd: SolverData) Vec2 {
+    if (body.kind == .static) return Vec2.zero;
+    return body.velocity.add(Vec2{ .x = -body.angular_velocity * sd.r.y, .y = body.angular_velocity * sd.r.x });
+}
 
 /// Helper to build the cache.
 fn getSolverData(body: *Body, contact_point: Vec2) SolverData {
-    if (body.kind != .dynamic) {
-        return .{
-            .inv_mass = 0.0,
-            .inv_inertia = 0.0,
-            .r = contact_point.sub(body.position),
-        };
-    }
     return .{
-        .inv_mass = 1.0 / body.mass,
-        .inv_inertia = 1.0 / body.inertia,
+        .inv_mass = body.invMass(),
+        .inv_inertia = body.invInertia(),
         .r = contact_point.sub(body.position),
     };
 }
@@ -54,10 +68,24 @@ pub fn resolveWithMaterials(
     friction1: f32,
     friction2: f32,
     restitution_clamp_threshold: f32,
+    sleep_policy: SleepPolicy,
 ) void {
     // 1. Pre-calculate solver data (Mass, Inertia, R-vector)
-    const sd1 = getSolverData(body1, m.point);
-    const sd2 = getSolverData(body2, m.point);
+    var sd1 = getSolverData(body1, m.point);
+    var sd2 = getSolverData(body2, m.point);
+
+    // A dynamic body settling slowly onto a sleeping one rests on it as it would
+    // on static ground. Without this, the weight of an awake body wakes whatever
+    // is underneath it every step and stacks can never fall asleep. Impacts,
+    // sideways pushes and kinematic bodies still wake sleepers as usual.
+    if (sleep_policy.down) |down| {
+        const rel_speed = contactVelocity(body2, sd2).sub(contactVelocity(body1, sd1)).length();
+        if (rel_speed < sleep_policy.wake_speed) {
+            const facing_down = m.normal.dot(down); // > 0: body2 is below body1
+            if (body2.isSleeping() and body1.kind == .dynamic and facing_down > 0) sd2 = sd2.immovable();
+            if (body1.isSleeping() and body2.kind == .dynamic and facing_down < 0) sd1 = sd1.immovable();
+        }
+    }
 
     // Combine material properties
     const restitution = @sqrt(restitution1 * restitution2);
@@ -87,15 +115,8 @@ fn resolveNormalImpulse(
 ) NormalImpulseResult {
     // Calculate velocity at the specific contact point for each body
     // Velocity = LinearVel + (AngularVel * R_perp)
-    const v1 = if (body1.kind != .static)
-        body1.velocity.add(Vec2{ .x = -body1.angular_velocity * sd1.r.y, .y = body1.angular_velocity * sd1.r.x })
-    else
-        Vec2.zero;
-
-    const v2 = if (body2.kind != .static)
-        body2.velocity.add(Vec2{ .x = -body2.angular_velocity * sd2.r.y, .y = body2.angular_velocity * sd2.r.x })
-    else
-        Vec2.zero;
+    const v1 = contactVelocity(body1, sd1);
+    const v2 = contactVelocity(body2, sd2);
 
     // Relative velocity
     const vrel = v2.sub(v1);
@@ -117,8 +138,9 @@ fn resolveNormalImpulse(
     const e = if (@abs(vn) < clamp_threshold) 0.0 else restitution;
 
     // Calculate impulse magnitude (scalar)
-    var jn = -(1.0 + e) * vn / k;
-    jn = @min(jn, 1000.0); // Clamp huge impulses for stability
+    // No fixed cap here: the impulse needed to stop a body scales with its mass,
+    // so a constant limit lets heavy bodies sink through whatever supports them.
+    const jn = -(1.0 + e) * vn / k;
 
     // Apply the impulse to both bodies
     const impulse_vec = m.normal.scale(jn);
@@ -172,7 +194,8 @@ fn applyFrictionImpulse(
 
 /// Internal helper to apply a raw impulse vector to a body using cached data.
 fn applyImpulse(body: *Body, sd: SolverData, impulse: Vec2) void {
-    if (body.kind != .dynamic) return;
+    // Nothing to change for static, kinematic, or deliberately undisturbed bodies.
+    if (body.kind != .dynamic or (sd.inv_mass == 0.0 and sd.inv_inertia == 0.0)) return;
 
     // Wake impacted bodies, but preserve the sleep timer of already-awake
     // bodies so resting support impulses do not prevent them from settling.
@@ -193,13 +216,11 @@ pub fn correctPositions(
     m: ContactManifold,
     correction_factor: f32,
 ) void {
-    const b1_dyn = body1.kind == .dynamic;
-    const b2_dyn = body2.kind == .dynamic;
-
-    if (!b1_dyn and !b2_dyn) return;
-
-    const inv_m1 = if (b1_dyn) 1.0 / body1.mass else 0.0;
-    const inv_m2 = if (b2_dyn) 1.0 / body2.mass else 0.0;
+    // Sleeping bodies are at rest on their support and act as immovable here.
+    // Moving them would shift a body that is not being simulated; an impulse
+    // from a real impact (or losing its support) is what wakes a sleeper.
+    const inv_m1 = if (body1.isSleeping()) 0.0 else body1.invMass();
+    const inv_m2 = if (body2.isSleeping()) 0.0 else body2.invMass();
     const sum = inv_m1 + inv_m2;
 
     if (sum <= 0.0) return;
@@ -207,8 +228,8 @@ pub fn correctPositions(
     const corr_mag = (m.penetration / sum) * correction_factor;
     const corr = m.normal.scale(corr_mag);
 
-    if (b1_dyn) body1.position = body1.position.sub(corr.scale(inv_m1));
-    if (b2_dyn) body2.position = body2.position.add(corr.scale(inv_m2));
+    if (inv_m1 > 0) body1.position = body1.position.sub(corr.scale(inv_m1));
+    if (inv_m2 > 0) body2.position = body2.position.add(corr.scale(inv_m2));
 }
 
 const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
@@ -229,7 +250,7 @@ test "kinematic contact velocity transfers motion in either body order" {
             const manifold = ContactManifold.init(Vec2.init(1, 0), normal, 0);
             const a = if (reverse) &other else &dynamic;
             const b = if (reverse) &dynamic else &other;
-            resolveWithMaterials(a, b, manifold, 0, 0, 0, 0, 0);
+            resolveWithMaterials(a, b, manifold, 0, 0, 0, 0, 0, .{});
             try std.testing.expectApproxEqAbs(case.expected, dynamic.velocity.x, 0.0001);
             try std.testing.expectEqual(case.velocity, other.velocity.x);
             try std.testing.expectEqual(@as(f32, 0), other.angular_velocity);
@@ -244,7 +265,7 @@ test "rotating kinematic bodies contribute angular contact velocity" {
         kinematic.angular_velocity = 10;
         // At (0,1), the rotating surface moves left at 10 units per second.
         const manifold = ContactManifold.init(Vec2.init(0, 1), Vec2.init(if (reverse) -1 else 1, 0), 0);
-        resolveWithMaterials(if (reverse) &kinematic else &dynamic, if (reverse) &dynamic else &kinematic, manifold, 0, 0, 0, 0, 0);
+        resolveWithMaterials(if (reverse) &kinematic else &dynamic, if (reverse) &dynamic else &kinematic, manifold, 0, 0, 0, 0, 0, .{});
         try std.testing.expectApproxEqAbs(@as(f32, -10), dynamic.velocity.x, 0.0001);
         try std.testing.expectEqual(@as(f32, 10), kinematic.angular_velocity);
         try std.testing.expectEqual(Vec2.zero, kinematic.velocity);
@@ -255,7 +276,7 @@ test "moving kinematic surfaces contribute tangential velocity to friction" {
     var dynamic = Body.initDynamic(PhysicsShape.circ(1), Vec2.zero, .{});
     var kinematic = Body.initKinematic(PhysicsShape.rect(2, 2), Vec2.init(0, 2), .{ .velocity = .{ .x = 4, .y = -10 } });
     const manifold = ContactManifold.init(Vec2.init(0, 1), Vec2.init(0, 1), 0);
-    resolveWithMaterials(&dynamic, &kinematic, manifold, 0, 0, 1, 1, 0);
+    resolveWithMaterials(&dynamic, &kinematic, manifold, 0, 0, 1, 1, 0, .{});
     try std.testing.expectApproxEqAbs(@as(f32, 4.0 / 3.0), dynamic.velocity.x, 0.0001);
     try std.testing.expectApproxEqAbs(@as(f32, -10), dynamic.velocity.y, 0.0001);
     try std.testing.expectApproxEqAbs(@as(f32, -8.0 / 3.0), dynamic.angular_velocity, 0.0001);
@@ -375,7 +396,7 @@ test "box sliding down ramp: friction causes rolling" {
     test_log.debug("  r × normal = {d:.3} (if 0, normal impulse won't cause rotation)", .{r.cross2(normal)});
 
     // Use the FULL collision response with friction
-    resolveWithMaterials(&box, &ramp, manifold, 0.0, 0.0, 0.5, 0.5, 3.0);
+    resolveWithMaterials(&box, &ramp, manifold, 0.0, 0.0, 0.5, 0.5, 3.0, .{});
 
     test_log.debug("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
@@ -469,7 +490,7 @@ test "realistic ramp scenario: box falling onto 20-degree ramp" {
     test_log.debug("  before: vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
     // Full collision with friction
-    resolveWithMaterials(&box, &ramp, manifold, 0.4, 0.4, 0.4, 0.4, 3.0);
+    resolveWithMaterials(&box, &ramp, manifold, 0.4, 0.4, 0.4, 0.4, 3.0, .{});
 
     test_log.debug("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
@@ -481,4 +502,31 @@ test "realistic ramp scenario: box falling onto 20-degree ramp" {
 
     // Verify impulse was actually applied
     try std.testing.expect(box.velocity.y < 100); // Should have slowed/reversed
+}
+
+test "a slow load from above leaves a sleeper asleep; impacts and side pushes wake it" {
+    const policy = SleepPolicy{ .down = Vec2.init(0, 1), .wake_speed = 25 };
+    const Case = struct { velocity: Vec2, normal: Vec2, wakes: bool };
+    for ([_]Case{
+        // Resting on top (normal points from the load down to the sleeper).
+        .{ .velocity = Vec2.init(0, 10), .normal = Vec2.init(0, 1), .wakes = false },
+        // Dropped onto it.
+        .{ .velocity = Vec2.init(0, 100), .normal = Vec2.init(0, 1), .wakes = true },
+        // Nudged from the side, however slowly.
+        .{ .velocity = Vec2.init(10, 0), .normal = Vec2.init(1, 0), .wakes = true },
+    }) |case| {
+        for ([_]bool{ false, true }) |reverse| {
+            var load = Body.initDynamic(PhysicsShape.circ(1), Vec2.zero, .{ .velocity = case.velocity });
+            var sleeper = Body.initDynamic(PhysicsShape.circ(1), case.normal.scale(2), .{});
+            sleeper.putToSleep();
+            const manifold = ContactManifold.init(case.normal, if (reverse) case.normal.negate() else case.normal, 0);
+            resolveWithMaterials(if (reverse) &sleeper else &load, if (reverse) &load else &sleeper, manifold, 0, 0, 0, 0, 3, policy);
+            try std.testing.expectEqual(case.wakes, !sleeper.isSleeping());
+            if (!case.wakes) {
+                // The load stops dead, as it would on static ground.
+                try std.testing.expectEqual(Vec2.zero, sleeper.velocity);
+                try std.testing.expectApproxEqAbs(@as(f32, 0), load.velocity.y, 0.0001);
+            }
+        }
+    }
 }

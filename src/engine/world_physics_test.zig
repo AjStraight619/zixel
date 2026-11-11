@@ -164,3 +164,131 @@ test "physics advances world bodies only when a full time step accumulates" {
     try std.testing.expectEqual(@as(u64, 2), physics.step_count);
     try std.testing.expectApproxEqAbs(@as(f32, 0.3), world.getBody(dynamic).?.position.y, 0.0001);
 }
+
+fn stepFor(physics: *Physics, world: *World, seconds: f32) void {
+    const steps: usize = @intFromFloat(seconds / physics.cfg.physics_time_step);
+    for (0..steps) |_| physics.update(world.bodies(), physics.cfg.physics_time_step);
+}
+
+test "a box dropped far from a wide floor's centre settles flat in either spawn order" {
+    for ([_]bool{ false, true }) |floor_first| {
+        var world = World.init(std.testing.allocator);
+        defer world.deinit();
+        var physics = try Physics.init(std.testing.allocator, .{});
+        defer physics.deinit();
+        var box_handle: World.EntityHandle = undefined;
+        if (floor_first) {
+            _ = try world.addStaticRect(0, 120, 1200, 20, .{ .restitution = 0 });
+            box_handle = try world.addDynamicRect(500, 0, 20, 20, .{ .restitution = 0 });
+        } else {
+            box_handle = try world.addDynamicRect(500, 0, 20, 20, .{ .restitution = 0 });
+            _ = try world.addStaticRect(0, 120, 1200, 20, .{ .restitution = 0 });
+        }
+        stepFor(&physics, &world, 4);
+        const box = world.getBody(box_handle).?;
+        // Floor top is y = 110, so a resting 20 px box is centred near y = 100.
+        try std.testing.expectApproxEqAbs(@as(f32, 100), box.position.y, 1.5);
+        try std.testing.expectApproxEqAbs(@as(f32, 500), box.position.x, 0.5);
+        try std.testing.expectApproxEqAbs(@as(f32, 0), box.rotation, 0.001);
+        try std.testing.expect(box.isSleeping());
+    }
+}
+
+test "heavy bodies are held up by the floor instead of sinking through it" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{ .allow_sleeping = false });
+    defer physics.deinit();
+    const handle = try world.addDynamicCircle(0, 0, 10, .{ .mass = 100, .restitution = 0 });
+    _ = try world.addStaticRect(0, 20, 400, 20, .{ .restitution = 0 });
+    stepFor(&physics, &world, 3);
+    const body = world.getBody(handle).?;
+    try std.testing.expect(@abs(body.velocity.y) < 20);
+    try std.testing.expectApproxEqAbs(@as(f32, 0), body.position.y, 1.5);
+}
+
+test "a body spinning in place is not put to sleep" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{
+        .gravity = .{ .x = 0, .y = 0 },
+        .angular_damping = 0,
+    });
+    defer physics.deinit();
+    const handle = try world.addDynamicRect(0, 0, 10, 10, .{});
+    const body = world.getBody(handle).?;
+    body.angular_velocity = 15;
+    stepFor(&physics, &world, 1);
+    try std.testing.expect(!body.isSleeping());
+    try std.testing.expectEqual(@as(f32, 15), body.angular_velocity);
+    // A body that is barely turning still settles.
+    body.angular_velocity = 0.1;
+    stepFor(&physics, &world, 1);
+    try std.testing.expect(body.isSleeping());
+}
+
+test "a body asleep on a kinematic platform wakes when the platform starts moving" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{});
+    defer physics.deinit();
+    const box_handle = try world.addDynamicRect(0, -20, 20, 20, .{ .restitution = 0 });
+    const platform_handle = try world.addKinematicRect(0, 0, 100, 20, .{ .restitution = 0 });
+    stepFor(&physics, &world, 2);
+    const box = world.getBody(box_handle).?;
+    try std.testing.expect(box.isSleeping());
+    const rest_y = box.position.y;
+
+    world.getBody(platform_handle).?.velocity = .{ .x = 200, .y = 0 };
+    stepFor(&physics, &world, 2);
+    // The platform has left; the box woke up and fell instead of floating.
+    try std.testing.expect(!box.isSleeping());
+    try std.testing.expect(box.position.y > rest_y + 100);
+}
+
+test "sleeping bodies fall when what they rest on is removed, stack included" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    // Gentle gravity: with one velocity pass per step, the upper box of a stack
+    // keeps a residual speed of 2*g*dt, which must stay under the sleep threshold.
+    var physics = try Physics.init(std.testing.allocator, .{ .gravity = .{ .x = 0, .y = 300 } });
+    defer physics.deinit();
+    const lower_handle = try world.addDynamicRect(0, -20, 20, 20, .{ .restitution = 0 });
+    const upper_handle = try world.addDynamicRect(0, -40.5, 20, 20, .{ .restitution = 0 });
+    const floor_handle = try world.addStaticRect(0, 0, 200, 20, .{ .restitution = 0 });
+    stepFor(&physics, &world, 3);
+    const lower = world.getBody(lower_handle).?;
+    const upper = world.getBody(upper_handle).?;
+    try std.testing.expect(lower.isSleeping());
+    try std.testing.expect(upper.isSleeping());
+    const lower_y = lower.position.y;
+    const upper_y = upper.position.y;
+
+    // Supported sleepers stay put.
+    stepFor(&physics, &world, 1);
+    try std.testing.expectEqual(lower_y, lower.position.y);
+    try std.testing.expectEqual(upper_y, upper.position.y);
+
+    // Move the floor far away (it is static, so nothing announces the change).
+    world.getBody(floor_handle).?.position.y = 100000;
+    stepFor(&physics, &world, 1);
+    try std.testing.expect(lower.position.y > lower_y + 100);
+    try std.testing.expect(upper.position.y > upper_y + 100);
+}
+
+test "a zero-mass dynamic body never produces NaN" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{});
+    defer physics.deinit();
+    const handle = try world.addDynamicCircle(0, 0, 10, .{ .mass = 0 });
+    const other_handle = try world.addDynamicCircle(5, 0, 10, .{});
+    _ = try world.addStaticRect(0, 20, 400, 20, .{});
+    stepFor(&physics, &world, 1);
+    for ([_]World.EntityHandle{ handle, other_handle }) |h| {
+        const body = world.getBody(h).?;
+        try std.testing.expect(std.math.isFinite(body.position.x) and std.math.isFinite(body.position.y));
+        try std.testing.expect(std.math.isFinite(body.velocity.x) and std.math.isFinite(body.velocity.y));
+        try std.testing.expect(std.math.isFinite(body.rotation));
+    }
+}

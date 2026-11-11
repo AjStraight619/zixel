@@ -42,6 +42,9 @@ mass: f32 = 1.0,
 inertia: f32 = 1.0,
 is_sleeping: bool = false,
 sleep_time: f32 = 0.0,
+/// Solver scratch, rewritten every physics step: whether something that is
+/// itself at rest holds this body up against gravity.
+has_support: bool = false,
 
 // --- Constructors ---
 
@@ -98,8 +101,24 @@ fn computeInertia(shape: PhysicsShape, mass: f32) f32 {
 pub fn applyForce(self: *Body, force: Vec2) void {
     if (self.kind == .dynamic) {
         if (force.x != 0 or force.y != 0) self.wakeUp();
-        self.acceleration = self.acceleration.add(force.scale(1.0 / self.mass));
+        self.acceleration = self.acceleration.add(force.scale(self.invMass()));
     }
+}
+
+/// Inverse mass used by the solver. Static and kinematic bodies, and dynamic
+/// bodies with a non-positive or non-finite mass, behave as infinitely heavy
+/// instead of turning velocities into NaN.
+pub fn invMass(self: *const Body) f32 {
+    return if (self.kind == .dynamic) safeInverse(self.mass) else 0.0;
+}
+
+/// Inverse moment of inertia, with the same rules as `invMass`.
+pub fn invInertia(self: *const Body) f32 {
+    return if (self.kind == .dynamic) safeInverse(self.inertia) else 0.0;
+}
+
+fn safeInverse(value: f32) f32 {
+    return if (value > 0 and std.math.isFinite(value)) 1.0 / value else 0.0;
 }
 
 pub fn aabb(self: *const Body) Aabb {
@@ -189,6 +208,18 @@ test "nonzero force wakes a sleeping dynamic body and resets its sleep timer" {
     try std.testing.expect(!body.isSleeping());
     try std.testing.expectEqual(@as(f32, 0), body.sleep_time);
     try std.testing.expectEqual(@as(f32, 3), body.acceleration.y);
+}
+
+test "non-positive mass and inertia act as infinite instead of producing NaN" {
+    var body = Body.initDynamic(PhysicsShape.circ(0), Vec2.zero, .{ .mass = 0 });
+    try std.testing.expectEqual(@as(f32, 0), body.invMass());
+    try std.testing.expectEqual(@as(f32, 0), body.invInertia());
+    body.applyForce(.{ .x = 5, .y = 5 });
+    try std.testing.expectEqual(Vec2.zero, body.acceleration);
+    body.mass = -3;
+    try std.testing.expectEqual(@as(f32, 0), body.invMass());
+    body.mass = 4;
+    try std.testing.expectEqual(@as(f32, 0.25), body.invMass());
 }
 
 test "zero force preserves sleep and forces do not affect infinite-mass bodies" {
