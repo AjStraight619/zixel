@@ -12,6 +12,8 @@ pub fn build(b: *std.Build) !void {
     const buildinfo = b.addOptions();
 
     buildinfo.addOption([]const u8, "version", projectVersionFromZon());
+    // Where this checkout lives, so `zixel new` can point new projects at it.
+    buildinfo.addOption([]const u8, "source_dir", b.pathFromRoot("."));
 
     const cimgui_conf = cimgui.getConfig(false);
     const dep_cimgui = b.dependency("cimgui", .{
@@ -151,4 +153,11 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     }) });
     test_step.dependOn(&b.addRunArtifact(editor_args_tests).step);
+    const cli_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("cli/parse.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    cli_tests.root_module.addOptions("zixel_buildinfo", buildinfo);
+    test_step.dependOn(&b.addRunArtifact(cli_tests).step);
 }

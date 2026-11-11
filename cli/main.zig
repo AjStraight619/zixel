@@ -1,5 +1,5 @@
 const std = @import("std");
-const Alignment = std.mem.Alignment;
+const buildinfo = @import("zixel_buildinfo");
 const parseCommand = @import("parse.zig").parseCommand;
 const command = @import("command.zig");
 
@@ -20,7 +20,15 @@ pub fn main(init: std.process.Init) !void {
     switch (cmd) {
         .help => try command.help.run(stdout),
         .version => try command.version.run(stdout),
-        .new => |c| try command.new.run(alloc, stdout, c),
+        .new => |c| command.new.run(alloc, init.io, stdout, std.Io.Dir.cwd(), c, buildinfo.source_dir) catch |err| {
+            // Refusals have already been explained on stdout by `new`.
+            switch (err) {
+                error.InvalidProjectName, error.UnsupportedOption, error.DirectoryNotEmpty => {},
+                else => try stdout.print("error: could not create the project: {s}\n", .{@errorName(err)}),
+            }
+            try stdout.flush();
+            std.process.exit(1);
+        },
     }
 
     try stdout.flush();
