@@ -1,6 +1,6 @@
 //! Physics simulation independent of entity storage and rendering.
 const std = @import("std");
-const log = std.log;
+const log = std.log.scoped(.zixel_physics);
 const Allocator = std.mem.Allocator;
 const Vec2 = @import("../math/Vec2.zig");
 const SpatialHash = @import("broadphase.zig").SpatialHash;
@@ -24,7 +24,7 @@ pub const Config = struct {
     angular_damping: f32 = 0.05,
     max_linear_velocity: f32 = 2000.0,
     max_angular_velocity: f32 = 20.0,
-    debug_logging: bool = false,
+    /// Interval in physics steps for scoped debug statistics; zero disables them.
     debug_log_interval: u64 = 60,
 };
 
@@ -229,11 +229,10 @@ fn updateSleepingBodies(self: *Physics, bodies: anytype, dt: f32) void {
 }
 
 fn maybeLogDebug(self: *Physics) void {
-    if (!self.cfg.debug_logging) return;
-    if (self.step_count % self.cfg.debug_log_interval != 0) return;
+    if (self.cfg.debug_log_interval == 0 or self.step_count % self.cfg.debug_log_interval != 0) return;
 
-    log.info(
-        "[Physics] step={d} active={d} sleeping={d} collisions={d}/{d} max_pen={d:.2} max_vel={d:.1}",
+    log.debug(
+        "step={d} active={d} sleeping={d} collisions={d}/{d} max_pen={d:.2} max_vel={d:.1}",
         .{
             self.step_count,
             self.debug_stats.active_bodies,

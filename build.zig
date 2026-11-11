@@ -145,4 +145,10 @@ pub fn build(b: *std.Build) !void {
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
+    const editor_args_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("editor/Args.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    test_step.dependOn(&b.addRunArtifact(editor_args_tests).step);
 }

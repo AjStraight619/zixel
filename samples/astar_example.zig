@@ -70,7 +70,7 @@ pub const NavMazeScene = struct {
             self.rng = prng.random();
 
             self.rebuildMaze() catch |err| {
-                std.log.err("rebuildMaze failed: {}", .{err});
+                std.log.scoped(.game).err("rebuildMaze failed: {}", .{err});
             };
         }
 

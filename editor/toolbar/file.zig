@@ -3,6 +3,7 @@ const ig = @import("cimgui");
 const sapp = @import("sokol").app;
 
 const Editor = @import("../Editor.zig");
+const log = std.log.scoped(.zixel_scene);
 
 pub fn draw(editor: *Editor) void {
     if (ig.igBeginMenu("File")) {
@@ -12,7 +13,7 @@ pub fn draw(editor: *Editor) void {
         }
 
         if (ig.igMenuItem("Save Scene")) {
-            editor.log("Saved Scene");
+            log.warn("Saving scenes is not implemented yet", .{});
         }
 
         ig.igSeparator();

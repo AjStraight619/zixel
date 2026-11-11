@@ -1,7 +1,7 @@
 const std = @import("std");
 const sokol = @import("sokol");
 const sapp = sokol.app;
-const slog = sokol.log;
+const logging = @import("../logging.zig");
 
 const Time = @import("Time.zig");
 const Scene = @import("Scene.zig");
@@ -96,7 +96,7 @@ pub fn run(self: *Engine) void {
         .high_dpi = self.cfg.window.high_dpi,
         .sample_count = self.cfg.window.sample_count,
         .swap_interval = self.cfg.window.swap_interval,
-        .logger = .{ .func = slog.func },
+        .logger = .{ .func = logging.sokolLog },
     });
 }
 

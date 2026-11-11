@@ -3,7 +3,7 @@ const sokol = @import("sokol");
 const sg = sokol.gfx;
 const sgl = sokol.gl;
 const sglue = sokol.glue;
-const slog = sokol.log;
+const logging = @import("../logging.zig");
 const sapp = sokol.app;
 
 const Renderer = @This();
@@ -22,11 +22,11 @@ pub fn init(self: *Renderer, setup_gfx: bool) void {
     if (setup_gfx) {
         sg.setup(.{
             .environment = sglue.environment(),
-            .logger = .{ .func = slog.func },
+            .logger = .{ .func = logging.sokolLog },
         });
     }
     sgl.setup(.{
-        .logger = .{ .func = slog.func },
+        .logger = .{ .func = logging.sokolLog },
     });
 }
 

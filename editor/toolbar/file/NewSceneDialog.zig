@@ -1,5 +1,6 @@
 const std = @import("std");
 const ig = @import("cimgui");
+const log = std.log.scoped(.zixel_scene);
 
 const NewSceneDialog = @This();
 
@@ -34,7 +35,7 @@ pub fn draw(self: *NewSceneDialog) void {
         if (ig.igButton("Create")) {
             // Get the string slice (cutting off null terminators)
             const name = std.mem.sliceTo(&self.input_buffer, 0);
-            std.debug.print("Creating Scene: {s}\n", .{name});
+            log.warn("Scene creation is not implemented yet (name={s})", .{name});
 
             ig.igCloseCurrentPopup();
         }
@@ -51,7 +52,7 @@ pub fn draw(self: *NewSceneDialog) void {
 
 pub fn createScene(self: *NewSceneDialog, game_dir: []const u8) void {
     const name = std.mem.sliceTo(&self.input_buffer, 0);
-    std.debug.print("Creating Scene: {s}\n", .{name});
+    log.warn("Scene creation is not implemented yet (name={s})", .{name});
 
     _ = game_dir;
 }

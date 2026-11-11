@@ -1,4 +1,5 @@
 const std = @import("std");
+const test_log = std.log.scoped(.zixel_physics_test);
 const math = std.math;
 
 const Vec2 = @import("../math/Vec2.zig");
@@ -330,8 +331,8 @@ test "box falling on flat ground: should not spin" {
         5.0, // Some penetration
     );
 
-    std.debug.print("\n[TEST] box falling on flat ground:\n", .{});
-    std.debug.print("  before: vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+    test_log.debug("[TEST] box falling on flat ground:", .{});
+    test_log.debug("  before: vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
     // vrel = v2 - v1 = 0 - (0, 100) = (0, -100)
     // vn = vrel.dot(normal) = (0, -100).dot(0, 1) = -100 (approaching)
@@ -340,7 +341,7 @@ test "box falling on flat ground: should not spin" {
 
     _ = resolveNormalImpulse(&box, &ground, getSolverData(&box, manifold.point), getSolverData(&ground, manifold.point), manifold, 0.5, 3.0);
 
-    std.debug.print("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+    test_log.debug("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
     // Contact at center = no rotation
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), box.angular_velocity, 0.001);
@@ -365,23 +366,23 @@ test "box sliding down ramp: friction causes rolling" {
         3.0,
     );
 
-    std.debug.print("\n[TEST] box on ramp WITH FRICTION:\n", .{});
-    std.debug.print("  box center: (100, 80)\n", .{});
-    std.debug.print("  before: vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+    test_log.debug("[TEST] box on ramp WITH FRICTION:", .{});
+    test_log.debug("  box center: (100, 80)", .{});
+    test_log.debug("  before: vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
     const r = manifold.point.sub(box.position);
-    std.debug.print("  r (lever arm): ({d:.1}, {d:.1})\n", .{ r.x, r.y });
-    std.debug.print("  r × normal = {d:.3} (if 0, normal impulse won't cause rotation)\n", .{r.cross2(normal)});
+    test_log.debug("  r (lever arm): ({d:.1}, {d:.1})", .{ r.x, r.y });
+    test_log.debug("  r × normal = {d:.3} (if 0, normal impulse won't cause rotation)", .{r.cross2(normal)});
 
     // Use the FULL collision response with friction
     resolveWithMaterials(&box, &ramp, manifold, 0.0, 0.0, 0.5, 0.5, 3.0);
 
-    std.debug.print("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+    test_log.debug("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
     // With friction, the box should start spinning
     // Friction opposes the sliding velocity (tangent to surface)
     // This friction force applied at the contact point causes rotation
-    std.debug.print("  (any non-zero ω means friction caused rotation)\n", .{});
+    test_log.debug("  (any non-zero ω means friction caused rotation)", .{});
 
     // Friction should cause SOME rotation (either direction depending on slide direction)
     // Box is sliding down-right, friction pulls it back (up-left along surface)
@@ -403,20 +404,20 @@ test "off-center contact causes rotation from normal impulse" {
         5.0,
     );
 
-    std.debug.print("\n[TEST] off-center ground hit:\n", .{});
-    std.debug.print("  box center: (100, 100)\n", .{});
-    std.debug.print("  contact: ({d:.1}, {d:.1})\n", .{ manifold.point.x, manifold.point.y });
+    test_log.debug("[TEST] off-center ground hit:", .{});
+    test_log.debug("  box center: (100, 100)", .{});
+    test_log.debug("  contact: ({d:.1}, {d:.1})", .{ manifold.point.x, manifold.point.y });
 
     const r = manifold.point.sub(box.position);
-    std.debug.print("  r (lever arm): ({d:.1}, {d:.1})\n", .{ r.x, r.y });
-    std.debug.print("  normal: ({d:.1}, {d:.1})\n", .{ manifold.normal.x, manifold.normal.y });
-    std.debug.print("  r × normal = {d:.3}\n", .{r.cross2(manifold.normal)});
+    test_log.debug("  r (lever arm): ({d:.1}, {d:.1})", .{ r.x, r.y });
+    test_log.debug("  normal: ({d:.1}, {d:.1})", .{ manifold.normal.x, manifold.normal.y });
+    test_log.debug("  r × normal = {d:.3}", .{r.cross2(manifold.normal)});
 
-    std.debug.print("  before: vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+    test_log.debug("  before: vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
     _ = resolveNormalImpulse(&box, &ground, getSolverData(&box, manifold.point), getSolverData(&ground, manifold.point), manifold, 0.5, 3.0);
 
-    std.debug.print("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+    test_log.debug("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
     // r = (18, 20), normal = (0, 1)
     // r × normal = 18 * 1 - 20 * 0 = 18 (non-zero!)
@@ -448,29 +449,29 @@ test "realistic ramp scenario: box falling onto 20-degree ramp" {
 
     const manifold = ContactManifold.init(contact, normal, 3.0);
 
-    std.debug.print("\n[TEST] Box falling onto tilted ramp (FIXED NORMAL):\n", .{});
-    std.debug.print("  box center: (200, 100)\n", .{});
-    std.debug.print("  ramp angle: {d:.2} rad ({d:.1} degrees)\n", .{ ramp_angle, ramp_angle * 180 / 3.14159 });
-    std.debug.print("  contact: ({d:.1}, {d:.1})\n", .{ contact.x, contact.y });
-    std.debug.print("  normal: ({d:.3}, {d:.3}) [points from box toward ramp]\n", .{ normal.x, normal.y });
+    test_log.debug("[TEST] Box falling onto tilted ramp (FIXED NORMAL):", .{});
+    test_log.debug("  box center: (200, 100)", .{});
+    test_log.debug("  ramp angle: {d:.2} rad ({d:.1} degrees)", .{ ramp_angle, ramp_angle * 180 / 3.14159 });
+    test_log.debug("  contact: ({d:.1}, {d:.1})", .{ contact.x, contact.y });
+    test_log.debug("  normal: ({d:.3}, {d:.3}) [points from box toward ramp]", .{ normal.x, normal.y });
 
     const r = contact.sub(box.position);
-    std.debug.print("  r: ({d:.1}, {d:.1})\n", .{ r.x, r.y });
-    std.debug.print("  r × normal = {d:.3}\n", .{r.cross2(normal)});
+    test_log.debug("  r: ({d:.1}, {d:.1})", .{ r.x, r.y });
+    test_log.debug("  r × normal = {d:.3}", .{r.cross2(normal)});
 
     // Check vrel to understand what impulse will do
     const vrel = Vec2.init(0, 0).sub(box.velocity); // v2 - v1, ramp is static
     const vn = vrel.dot(normal);
-    std.debug.print("  vrel: ({d:.1}, {d:.1})\n", .{ vrel.x, vrel.y });
-    std.debug.print("  vn = vrel.dot(normal) = {d:.3}\n", .{vn});
-    std.debug.print("  (vn < 0 means approaching, > 0 means separating)\n", .{});
+    test_log.debug("  vrel: ({d:.1}, {d:.1})", .{ vrel.x, vrel.y });
+    test_log.debug("  vn = vrel.dot(normal) = {d:.3}", .{vn});
+    test_log.debug("  (vn < 0 means approaching, > 0 means separating)", .{});
 
-    std.debug.print("  before: vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+    test_log.debug("  before: vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
     // Full collision with friction
     resolveWithMaterials(&box, &ramp, manifold, 0.4, 0.4, 0.4, 0.4, 3.0);
 
-    std.debug.print("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}\n", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
+    test_log.debug("  after:  vel=({d:.1}, {d:.1}) ω={d:.3}", .{ box.velocity.x, box.velocity.y, box.angular_velocity });
 
     // With correct normal (pointing down-right from box to ramp):
     // - Impulse pushes box OPPOSITE to normal = up-left

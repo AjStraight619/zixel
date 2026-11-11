@@ -2,6 +2,7 @@ const std = @import("std");
 const zixel = @import("zixel_new");
 const Allocator = std.mem.Allocator;
 const EntityDef = zixel.EntityDef;
+const log = std.log.scoped(.zixel_editor);
 
 const NewSceneDialog = @import("toolbar/file/NewSceneDialog.zig");
 
@@ -24,7 +25,6 @@ show_inspector: bool = true,
 show_console: bool = true,
 show_demo: bool = false,
 
-console_lines: std.ArrayList([]const u8),
 entity_defs: std.ArrayList(EntityDef),
 dirty: bool = false,
 scene_file_path: ?[]const u8 = null,
@@ -34,7 +34,6 @@ pub fn init(alloc: Allocator, root_path: []const u8) !Editor {
 
     return .{
         .alloc = alloc,
-        .console_lines = .empty,
         .entity_defs = .empty,
         .game_root_dir = root_copy,
         // 2. Initialize dialog
@@ -44,7 +43,6 @@ pub fn init(alloc: Allocator, root_path: []const u8) !Editor {
 
 pub fn deinit(self: *Editor) void {
     self.alloc.free(self.game_root_dir);
-    self.console_lines.deinit(self.alloc);
     self.entity_defs.deinit(self.alloc);
 }
 
@@ -56,7 +54,8 @@ pub fn drawOverlays(self: *Editor) void {
 pub fn addEntity(self: *Editor, def: EntityDef) !void {
     if (self.world) |world| {
         _ = world.spawn(def) catch |err| {
-            self.log("Failed to spawn entity: {s}", .{@errorName(err)});
+            log.err("Failed to spawn entity: {s}", .{@errorName(err)});
+            return err;
         };
     }
     try self.entity_defs.append(self.alloc, def);
@@ -88,16 +87,4 @@ pub fn updateEntity(self: *Editor, idx: usize, def: EntityDef) void {
         }
     }
     self.dirty = true;
-}
-
-pub fn log(self: *Editor, msg: []const u8) void {
-    const msg_copy = self.alloc.dupe(u8, msg) catch return;
-    self.console_lines.append(self.alloc, msg_copy) catch {};
-}
-
-pub fn clearLog(self: *Editor) void {
-    for (self.console_lines.items) |msg| {
-        self.alloc.free(msg);
-    }
-    self.console_lines.clearRetainingCapacity();
 }

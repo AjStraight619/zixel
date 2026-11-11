@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log.scoped(.zixel_nav);
 const Allocator = std.mem.Allocator;
 
 const Grid = @import("Grid.zig");
@@ -273,14 +274,14 @@ fn updateOne(self: *Nav, world: *World, handle: EntityHandle, dt: f32) void {
 
 fn repathInternal(self: *Nav, pos: Vec2, goal: u32, st: *AgentState) void {
     const start = self.worldToIdx(pos.x, pos.y) orelse {
-        std.log.warn("[Nav.repath] agent pos ({d:.1}, {d:.1}) outside grid!", .{ pos.x, pos.y });
+        log.debug("Agent position ({d:.1}, {d:.1}) outside grid", .{ pos.x, pos.y });
         st.path.clearRetainingCapacity();
         st.waypoint_i = 0;
         st.needs_repath = false;
         return;
     };
 
-    std.log.info("[Nav.repath] start={d} goal={d} start_blocked={} goal_blocked={}", .{
+    log.debug("Repath: start={d} goal={d} start_blocked={} goal_blocked={}", .{
         start,
         goal,
         self.grid.isBlockedIdx(start),
@@ -291,11 +292,11 @@ fn repathInternal(self: *Nav, pos: Vec2, goal: u32, st: *AgentState) void {
 
     const ok = astar.findPath(self.alloc, &self.grid, &self.scratch, start, goal, &st.path);
     if (!ok) {
-        std.log.warn("[Nav.repath] A* FAILED to find path from {d} to {d}", .{ start, goal });
+        log.debug("No path from {d} to {d}", .{ start, goal });
         st.path.clearRetainingCapacity();
         st.waypoint_i = 0;
     } else {
-        std.log.info("[Nav.repath] A* SUCCESS, path len={d}", .{st.path.items.len});
+        log.debug("Path found: length={d}", .{st.path.items.len});
         st.waypoint_i = 0;
     }
 

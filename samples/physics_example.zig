@@ -120,7 +120,6 @@ pub fn main() !void {
         },
         .physics = .{
             .gravity = Vec2.init(0, 500),
-            .debug_logging = true,
         },
     });
 

@@ -3,7 +3,16 @@ const sokol = @import("sokol");
 const sglue = sokol.glue;
 const simgui = sokol.imgui;
 const zixel = @import("zixel_new");
-const Allocator = std.mem.Allocator;
+const logging = @import("logging.zig");
+const Args = @import("Args.zig");
+const log = std.log.scoped(.zixel_editor);
+
+pub const std_options: std.Options = .{
+    // Keep debug callsites available for --debug-log; the sink filters at runtime.
+    .log_level = .debug,
+    .logFn = logging.logFn,
+};
+pub const panic = std.debug.FullPanic(logging.panic);
 
 const Editor = @import("Editor.zig");
 const toolbar = @import("toolbar.zig");
@@ -25,9 +34,9 @@ var project_path: []const u8 = undefined;
 fn onInit() callconv(.c) void {
     sokol.gfx.setup(.{
         .environment = sglue.environment(),
-        .logger = .{ .func = sokol.log.func },
+        .logger = .{ .func = zixel.logging.sokolLog },
     });
-    simgui.setup(.{ .logger = .{ .func = sokol.log.func } });
+    simgui.setup(.{ .logger = .{ .func = zixel.logging.sokolLog } });
 
     const abs_game_path = project_path;
 
@@ -38,7 +47,6 @@ fn onInit() callconv(.c) void {
 
     app.engine = zixel.Engine.init(std.heap.c_allocator, .{
         .window = .{ .title = "Viewport", .width = 800, .height = 600 },
-        .physics = .{ .debug_logging = true },
         .game_dir = abs_game_path, // Engine uses the absolute path too
     }) catch |err| {
         std.debug.panic("Failed to initialize Engine: {}\n", .{err});
@@ -50,12 +58,7 @@ fn onInit() callconv(.c) void {
     // Link the editor to the engine's world
     app.editor.world = &app.engine.world;
 
-    if (std.fmt.allocPrint(std.heap.c_allocator, "Editor Initialized. Project: {s}", .{abs_game_path})) |msg| {
-        defer std.heap.c_allocator.free(msg);
-        app.editor.log(msg);
-    } else |_| {
-        app.editor.log("Editor Initialized");
-    }
+    log.info("Opened project: {s}", .{abs_game_path});
 }
 
 fn onFrame() callconv(.c) void {
@@ -102,14 +105,39 @@ fn onCleanup() callconv(.c) void {
     app.engine.deinit();
     app.editor.deinit();
     simgui.shutdown();
+    sokol.gl.shutdown();
     sokol.gfx.shutdown();
+    log.info("Editor stopped", .{});
 }
 
 pub fn main(init: std.process.Init) !void {
     const alloc = init.arena.allocator();
-    const args = try init.minimal.args.toSlice(alloc);
-    const raw_path = if (args.len > 1) args[1] else ".";
-    try project.scaffold(alloc, init.io, raw_path);
+    const argv = try init.minimal.args.toSlice(alloc);
+    var args = Args.parse(alloc, argv[1..]) catch |err| {
+        log.err("Invalid arguments: {s}\n{s}", .{ @errorName(err), Args.usage });
+        return err;
+    };
+    defer args.deinit(alloc);
+    if (args.help) {
+        try std.Io.File.stdout().writeStreamingAll(init.io, Args.usage);
+        return;
+    }
+    var logger = zixel.logging.Logger.init(alloc, init.io, .{
+        .file_path = args.log_file,
+        .debug_scopes = args.debug_scopes.items,
+    }) catch |err| {
+        log.err("Could not initialize logging (file={s}): {s}", .{ args.log_file orelse "disabled", @errorName(err) });
+        return err;
+    };
+    defer logger.deinit();
+    logging.active = &logger;
+    defer logging.active = null;
+    log.info("Starting Zixel {s}; log file: {s}", .{ @import("zixel_buildinfo").version, args.log_file orelse "disabled" });
+    const raw_path = args.project_path;
+    project.scaffold(alloc, init.io, raw_path) catch |err| {
+        log.err("Could not initialize project '{s}': {s}", .{ raw_path, @errorName(err) });
+        return err;
+    };
     project_path = try std.Io.Dir.cwd().realPathFileAlloc(init.io, raw_path, alloc);
     sokol.app.run(.{
         .init_cb = onInit,
@@ -119,6 +147,6 @@ pub fn main(init: std.process.Init) !void {
         .window_title = "Zixel Editor",
         .width = 1280,
         .height = 720,
-        .logger = .{ .func = sokol.log.func },
+        .logger = .{ .func = zixel.logging.sokolLog },
     });
 }

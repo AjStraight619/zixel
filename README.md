@@ -10,7 +10,7 @@ for this revision. Dependencies are pinned by commit and package hash.
 zig version                 # should print 0.16.0
 zig build                   # editor, CLI, and all samples
 zig build test
-zig build editor -- /path/to/project
+zig build run -- /path/to/project
 zig build run-physics-example
 zig build cli -- version
 ```
@@ -21,8 +21,8 @@ The editor currently scaffolds its project directory on startup and overwrites
 `settings/project.json` and `assets/scenes/main.json`; use a disposable project
 until loading existing projects is implemented safely.
 
-`zig build run` currently invokes the empty `src/main.zig` placeholder.
-Use the editor or sample commands above to run the graphical application.
+`zig build run` launches the editor; `zig build editor` is an alias.
+Both accept a project path after `--`, defaulting to the current directory.
 
 ## Physics benchmarks
 
@@ -157,17 +157,8 @@ defer snapshot.deinit();
 The returned `OwnedEntityDef` owns its storage. Free it once all users of
 `snapshot.value` are finished; do not copy the owner and free it twice.
 
-## Versions and releases
+## Editor binaries
 
-Use Zixel release tags (such as `v0.1.1`) independently of Zig compiler versions.
-Record the compiler used in each release's notes and keep published tags immutable.
-A Git tag identifies a committed source snapshot; it does not include uncommitted
-working changes. `v0.1.0` already exists in this repository.
-
-This branch targets Zig 0.16.0 only. Compiler upgrades update the source and
-dependency pins together; no compatibility layer for earlier Zig releases is
-maintained. Earlier Git commits remain available for older compiler versions.
-
-Distribute editor binaries per OS and architecture. Editor users do not need Zig
-to launch a binary, but may need platform shared libraries. Developers compiling
-Zig game code against the runtime need the compiler version for that release.
+Editor binaries are specific to an OS and architecture and may require system
+libraries. Zig is only needed to build Zixel or compile game code, not to launch
+a prebuilt editor.

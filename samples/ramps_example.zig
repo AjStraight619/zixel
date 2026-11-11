@@ -147,7 +147,6 @@ pub fn main() !void {
         },
         .physics = .{
             .gravity = Vec2.init(0, 400),
-            .debug_logging = true,
             .linear_damping = 0.002,
             .allow_sleeping = false,
         },

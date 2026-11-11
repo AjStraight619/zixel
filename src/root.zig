@@ -4,6 +4,7 @@ pub const engine = @import("engine.zig");
 pub const core = @import("core.zig");
 pub const physics = @import("physics.zig");
 pub const math = @import("math.zig");
+pub const logging = @import("logging.zig");
 
 pub const Engine = engine.Engine;
 pub const Ctx = engine.Ctx;
@@ -33,6 +34,7 @@ pub const Key = Input.Key;
 pub const MouseButton = Input.MouseButton;
 
 test {
+    _ = logging;
     _ = @import("engine/world_physics_test.zig");
     _ = @import("core/nav/astar.zig");
     _ = @import("physics/response.zig");
