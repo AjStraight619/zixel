@@ -42,4 +42,12 @@ test {
     _ = @import("engine/data.zig");
     _ = @import("engine/Entity.zig");
     _ = @import("engine/World.zig");
+    _ = @import("engine/Scene.zig");
+    _ = @import("engine/Input.zig");
+    _ = @import("engine/Time.zig");
+    _ = @import("core/nav/Grid.zig");
+    _ = @import("core/nav/Nav.zig");
+    _ = @import("core/allocators/CountingAllocator.zig");
+    _ = @import("physics/broadphase.zig");
+    _ = @import("physics/Body.zig");
 }
