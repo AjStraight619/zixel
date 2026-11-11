@@ -34,8 +34,10 @@ pub fn liveSize(self: *CountingAllocator) u64 {
 
 fn alloc(ctx: *anyopaque, len: usize, ptr_align: Alignment, ret_addr: usize) ?[*]u8 {
     const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
-    self.alloc_size += len;
-    return self.parent_allocator.rawAlloc(len, ptr_align, ret_addr);
+    const result = self.parent_allocator.rawAlloc(len, ptr_align, ret_addr);
+    // Count only memory that was actually handed out.
+    if (result != null) self.alloc_size += len;
+    return result;
 }
 
 fn resize(ctx: *anyopaque, buf: []u8, buf_align: Alignment, new_len: usize, ret_addr: usize) bool {
@@ -70,4 +72,15 @@ fn free(ctx: *anyopaque, buf: []u8, buf_align: Alignment, ret_addr: usize) void 
     const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
     self.free_size += buf.len;
     return self.parent_allocator.rawFree(buf, buf_align, ret_addr);
+}
+
+test "failed allocations are not counted as live memory" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
+    var counting = CountingAllocator.init(failing.allocator());
+    const a = counting.allocator();
+    const first = try a.alloc(u8, 32);
+    try std.testing.expectError(error.OutOfMemory, a.alloc(u8, 1000));
+    try std.testing.expectEqual(@as(u64, 32), counting.liveSize());
+    a.free(first);
+    try std.testing.expectEqual(@as(u64, 0), counting.liveSize());
 }
