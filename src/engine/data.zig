@@ -5,7 +5,17 @@ const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
 const Vec2 = @import("../math/Vec2.zig");
 const EntityDef = @import("Entity.zig").EntityDef;
 
+/// Scene names become file names, so they may not be empty, be `.`/`..`, or
+/// contain path separators that would write outside `assets/scenes`.
+fn isValidSceneName(scene_name: []const u8) bool {
+    if (scene_name.len == 0) return false;
+    if (std.mem.eql(u8, scene_name, ".") or std.mem.eql(u8, scene_name, "..")) return false;
+    return std.mem.indexOfAny(u8, scene_name, "/\\\x00") == null;
+}
+
 pub fn save(alloc: Allocator, io: std.Io, path: []const u8, scene_name: []const u8, defs: []const EntityDef) !void {
+    if (!isValidSceneName(scene_name)) return error.InvalidSceneName;
+
     const filename = try std.fmt.allocPrint(alloc, "{s}.json", .{scene_name});
     defer alloc.free(filename);
 
@@ -84,4 +94,15 @@ fn makeDef(name: []const u8, x: f32, y: f32, kind: BodyKind) EntityDef {
             .texture_path = null,
         },
     };
+}
+
+test "scene names that would escape the scenes directory are rejected" {
+    var temp_dir = std.testing.tmpDir(.{});
+    defer temp_dir.cleanup();
+    const alloc = std.testing.allocator;
+    const root = try temp_dir.dir.realPathFileAlloc(std.testing.io, ".", alloc);
+    defer alloc.free(root);
+    for ([_][]const u8{ "", ".", "..", "../escape", "nested/scene", "back\\slash" }) |name| {
+        try std.testing.expectError(error.InvalidSceneName, save(alloc, std.testing.io, root, name, &.{}));
+    }
 }
