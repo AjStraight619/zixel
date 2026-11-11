@@ -126,18 +126,22 @@ pub fn removeScene(self: *Engine, name: []const u8) void {
 
 pub fn createScene(self: *Engine, comptime T: type) !void {
     const ptr = try self.alloc.create(T);
+    errdefer self.alloc.destroy(ptr);
     ptr.* = try T.init(self.ctx());
     self.setScene(Scene.init(ptr));
 }
 
 pub fn pushCreateScene(self: *Engine, comptime T: type) !void {
     const instance = try self.alloc.create(T);
+    errdefer self.alloc.destroy(instance);
     instance.* = try T.init(self.ctx());
+    errdefer T.deinit(instance, self.alloc);
     try self.pushScene(Scene.init(instance));
 }
 
 pub fn createSceneWith(self: *Engine, comptime T: type, args: anytype) !void {
     const ptr = try self.alloc.create(T);
+    errdefer self.alloc.destroy(ptr);
     ptr.* = try @call(.auto, T.init, .{self.ctx()} ++ args);
     self.setScene(Scene.init(ptr));
 }

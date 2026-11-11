@@ -103,10 +103,9 @@ pub const NavMazeScene = struct {
         }
     }
 
-    pub fn deinit(self: *NavMazeScene, alloc: Allocator) void {
+    pub fn deinit(self: *NavMazeScene, _: Allocator) void {
         self.ctx.world.*.removeByOwner(.{ .scene = name });
         self.nav.deinit();
-        alloc.destroy(self);
     }
 
     fn rebuildMaze(self: *NavMazeScene) !void {

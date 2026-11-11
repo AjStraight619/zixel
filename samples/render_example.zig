@@ -42,9 +42,8 @@ pub const ExampleScene = struct {
         r.drawRect(base_x + offset, base_y, 100, 100, Renderer.Color.blue);
     }
 
-    pub fn deinit(self: *ExampleScene, alloc: Allocator) void {
-        alloc.destroy(self);
-    }
+    /// Nothing to release: the engine destroys the scene object itself.
+    pub fn deinit(_: *ExampleScene, _: Allocator) void {}
 };
 
 pub fn main() !void {

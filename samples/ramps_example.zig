@@ -134,7 +134,6 @@ pub const RampsScene = struct {
 
     pub fn deinit(self: *RampsScene, alloc: Allocator) void {
         self.sprites.deinit(alloc);
-        alloc.destroy(self);
     }
 };
 

@@ -107,7 +107,6 @@ pub const PhysicsScene = struct {
 
     pub fn deinit(self: *PhysicsScene, alloc: Allocator) void {
         self.sprites.deinit(alloc);
-        alloc.destroy(self);
     }
 };
 

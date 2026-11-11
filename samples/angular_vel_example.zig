@@ -168,9 +168,8 @@ pub const AngularRectsScene = struct {
         zixel.drawEntities(self.ctx.renderer, self.ctx.world);
     }
 
-    pub fn deinit(self: *AngularRectsScene, alloc: Allocator) void {
+    pub fn deinit(self: *AngularRectsScene, _: Allocator) void {
         self.ctx.world.*.removeByOwner(.{ .scene = name });
-        alloc.destroy(self);
     }
 };
 
