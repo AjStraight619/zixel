@@ -17,12 +17,33 @@ zig build cli -- version
 
 Binaries are installed in `zig-out/bin`. The native Linux graphics targets need
 the development libraries for ALSA, OpenGL, X11, Xi, and Xcursor when building.
-The editor currently scaffolds its project directory on startup and overwrites
-`settings/project.json` and `assets/scenes/main.json`; use a disposable project
-until loading existing projects is implemented safely.
+On startup the editor creates any missing project folders, plus
+`settings/project.json` and `assets/scenes/main.json` if they do not exist yet.
+Existing files are left untouched.
 
 `zig build run` launches the editor; `zig build editor` is an alias.
 Both accept a project path after `--`, defaulting to the current directory.
+
+```sh
+zig build run -- /path/to/project --log-file editor.log --debug-log zixel_physics
+```
+
+- `--log-file <path>` appends every log record to a file as well as stderr and
+  the editor console. The file's directory must exist, and one process owns a
+  log file at a time.
+- `--debug-log <scope>` enables debug records for one scope and may be repeated.
+  Scopes in use: `zixel_editor`, `zixel_scene`, `zixel_physics`, `zixel_nav`,
+  `zixel_sokol`.
+
+Runtime modules log through `std.log.scoped`, so a game chooses its own output
+with `std_options` (`logFn`, `log_level`, `log_scope_levels`). `zixel.logging.Logger`
+is the optional sink the editor uses. In Debug builds the default `std.log`
+level prints the physics statistics line every `debug_log_interval` steps; set
+that field to 0, or raise the level for `.zixel_physics`, to silence it.
+
+`zig build cli -- new my-game` creates a game project that depends on this
+checkout (the location recorded when the CLI was built). It refuses to write
+into a non-empty directory.
 
 ## Physics benchmarks
 
@@ -61,7 +82,7 @@ hardware, and workload. See [the experiment report](docs/physics-benchmarks.md).
 - `src/math.zig` and `src/math/`: vectors, bounds, and shape definitions.
 - `src/core.zig` and `src/core/`: reusable support code; `core/nav.zig` exposes navigation.
 - `editor/`: editor application, panels, toolbar, and dialogs.
-- `cli/`: command-line application (`new` is currently a stub).
+- `cli/`: command-line application (`help`, `version`, `new <name>`).
 - `samples/`: runnable games demonstrating the runtime API.
 
 Namespace entry files explicitly export their public declarations. The root also
@@ -91,6 +112,11 @@ physics.update(world.bodies(), dt);
 // Inside an active rendering frame:
 zixel.drawEntities(renderer, &world);
 ```
+
+A scene object is created with the engine's allocator and wrapped by
+`Scene.init`. When the scene is removed the engine calls its
+`deinit(self, alloc)` and then destroys the object, so `deinit` frees only what
+the scene owns and must not call `alloc.destroy(self)`.
 
 Body iterators borrow storage. Do not spawn or remove entities during a physics
 update. Rendering is independent of simulation, so paused worlds remain drawable.
