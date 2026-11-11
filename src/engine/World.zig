@@ -47,40 +47,86 @@ pub fn bodies(self: *World) BodyIterator {
 
 /// Spawn an entity from a borrowed definition. The caller must keep its strings
 /// alive until this entity is removed from the world.
+///
+/// Names are not required to be unique: `getByName` returns the most recently
+/// spawned live entity with that name.
 pub fn spawn(self: *World, def: EntityDef) !EntityHandle {
-    const body = if (def.body) |b| blk: {
-        const opts = BodyOptions{
-            .rotation = def.rotation,
-            .restitution = b.restitution,
-            .friction = b.friction,
-            .velocity = b.velocity,
-            .mass = b.mass,
-            .inertia = b.inertia,
-        };
-        break :blk switch (b.kind) {
-            .static => Body.initStatic(b.shape, def.position, opts),
-            .dynamic => Body.initDynamic(b.shape, def.position, opts),
-            .kinematic => Body.initKinematic(b.shape, def.position, opts),
-        };
-    } else Body.initStatic(PhysicsShape.rect(1, 1), def.position, .{});
-
     const entity = Entity{
         .name = def.name,
         .tags = def.tags,
         .owner = def.owner,
-        .body = body,
+        .body = bodyFromDef(def),
         .sprite = def.sprite,
     };
+
+    // Reserve the index entry first so a failure cannot leave a live entity
+    // that is missing from the name index.
+    if (def.name != null) try self.name_index.ensureUnusedCapacity(1);
 
     // Insert into slot storage
     const handle = try self.insertEntity(entity);
 
     // Index by name for fast lookup
-    if (def.name) |n| {
-        try self.name_index.put(n, handle);
-    }
+    if (def.name) |n| self.name_index.putAssumeCapacity(n, handle);
 
     return handle;
+}
+
+/// The physics body a definition describes. Definitions without a body get a
+/// 1x1 static placeholder at their position.
+pub fn bodyFromDef(def: EntityDef) Body {
+    const b = def.body orelse return Body.initStatic(PhysicsShape.rect(1, 1), def.position, .{});
+    const opts = BodyOptions{
+        .rotation = def.rotation,
+        .restitution = b.restitution,
+        .friction = b.friction,
+        .velocity = b.velocity,
+        .mass = b.mass,
+        .inertia = b.inertia,
+    };
+    return switch (b.kind) {
+        .static => Body.initStatic(b.shape, def.position, opts),
+        .dynamic => Body.initDynamic(b.shape, def.position, opts),
+        .kinematic => Body.initKinematic(b.shape, def.position, opts),
+    };
+}
+
+/// Rename an entity and keep name lookup in step. `name` is borrowed, like the
+/// strings passed to `spawn`. Returns false if the handle is stale or invalid.
+pub fn setName(self: *World, handle: EntityHandle, name: ?[]const u8) !bool {
+    const entity = self.get(handle) orelse return false;
+    if (name != null) try self.name_index.ensureUnusedCapacity(1);
+    if (entity.name) |old| {
+        if (self.name_index.get(old)) |indexed| {
+            if (indexed.eql(handle)) _ = self.name_index.remove(old);
+        }
+    }
+    entity.name = name;
+    if (name) |n| self.name_index.putAssumeCapacity(n, handle);
+    return true;
+}
+
+/// Remove one entity. Returns false if the handle is stale or invalid.
+pub fn remove(self: *World, handle: EntityHandle) bool {
+    if (self.get(handle) == null) return false;
+    self.removeSlot(handle.index);
+    return true;
+}
+
+fn removeSlot(self: *World, index: u32) void {
+    const slot = &self.slots.items[index];
+    if (slot.entity.name) |name| {
+        // Another live entity may share this name and own the index entry.
+        if (self.name_index.get(name)) |indexed| {
+            if (indexed.index == index and indexed.generation == slot.generation) {
+                _ = self.name_index.remove(name);
+            }
+        }
+    }
+    slot.alive = false;
+    slot.generation +%= 1;
+    // insertEntity keeps room for every slot, so this cannot fail.
+    self.free_indices.appendAssumeCapacity(index);
 }
 
 /// Get entity by name
@@ -120,15 +166,7 @@ pub fn removeByOwner(self: *World, owner: Entity.Owner) void {
             },
         };
 
-        if (matches) {
-            // Remove from name index
-            if (slot.entity.name) |name| {
-                _ = self.name_index.remove(name);
-            }
-            slot.alive = false;
-            slot.generation +%= 1;
-            self.free_indices.append(self.alloc, @intCast(i)) catch {};
-        }
+        if (matches) self.removeSlot(@intCast(i));
     }
 }
 
@@ -139,12 +177,7 @@ pub fn clearAll(self: *World, keep_persistent: bool) void {
 
         if (keep_persistent and slot.entity.owner == .none) continue;
 
-        if (slot.entity.name) |n| {
-            _ = self.name_index.remove(n);
-        }
-        slot.alive = false;
-        slot.generation +%= 1;
-        self.free_indices.append(self.alloc, @intCast(i)) catch {};
+        self.removeSlot(@intCast(i));
     }
 }
 
@@ -166,6 +199,8 @@ fn insertEntity(self: *World, entity: Entity) !EntityHandle {
     }
 
     const index: u32 = @intCast(self.slots.items.len);
+    // Keep room to record every slot as free, so removal never allocates.
+    try self.free_indices.ensureTotalCapacity(self.alloc, self.slots.items.len + 1);
     try self.slots.append(self.alloc, EntitySlot{
         .entity = entity,
         .generation = 1,
@@ -234,4 +269,45 @@ test "removed entity handles stay invalid when slots are reused" {
     var iter = world.bodies();
     try std.testing.expect(iter.next() != null);
     try std.testing.expect(iter.next() == null);
+}
+
+test "entities sharing a name do not break lookup when one of them is removed" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    const first = try world.spawn(.{ .name = "Enemy", .owner = .{ .scene = "A" } });
+    const second = try world.spawn(.{ .name = "Enemy", .owner = .{ .scene = "B" } });
+    // The newest entity owns the name; removing the older one must not unindex it.
+    world.removeByOwner(.{ .scene = "A" });
+    try std.testing.expect(world.get(first) == null);
+    try std.testing.expect(world.getByName("Enemy") == world.get(second).?);
+    try std.testing.expect(world.remove(second));
+    try std.testing.expect(world.getByName("Enemy") == null);
+    try std.testing.expect(!world.remove(second));
+}
+
+fn spawnAndRemoveWithFailures(alloc: Allocator) !void {
+    var world = World.init(alloc);
+    defer world.deinit();
+    for (0..8) |_| _ = try world.spawn(.{ .name = "Named" });
+    const before = world.entityCount();
+    world.clearAll(false);
+    // Every removed slot is reusable: respawning does not grow slot storage.
+    for (0..before) |_| _ = try world.spawn(.{});
+    try std.testing.expectEqual(before, world.slots.items.len);
+}
+
+test "spawning and removing stay consistent under allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, spawnAndRemoveWithFailures, .{});
+}
+
+test "renaming an entity moves its name lookup" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    const handle = try world.spawn(.{ .name = "Old" });
+    try std.testing.expect(try world.setName(handle, "New"));
+    try std.testing.expect(world.getByName("Old") == null);
+    try std.testing.expect(world.getByName("New") == world.get(handle).?);
+    try std.testing.expect(try world.setName(handle, null));
+    try std.testing.expect(world.getByName("New") == null);
+    try std.testing.expect(!try world.setName(EntityHandle.invalid, "Nobody"));
 }
