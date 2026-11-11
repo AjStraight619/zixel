@@ -153,6 +153,23 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     }) });
     test_step.dependOn(&b.addRunArtifact(editor_args_tests).step);
+    const editor_project_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("editor/project.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    test_step.dependOn(&b.addRunArtifact(editor_project_tests).step);
+    // Editor state, built against the same engine module and UI library as the editor.
+    const editor_state_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("editor/Editor.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "zixel_new", .module = zixel_editor_mod },
+            .{ .name = "cimgui", .module = dep_cimgui.module(cimgui_conf.module_name) },
+        },
+    }) });
+    test_step.dependOn(&b.addRunArtifact(editor_state_tests).step);
     const cli_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("cli/parse.zig"),
         .target = target,

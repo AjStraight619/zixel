@@ -73,6 +73,10 @@ fn onFrame() callconv(.c) void {
 
     if (app.is_playing) {
         app.engine.tick();
+    } else {
+        // Nothing reads game input while stopped; do not let presses queue up
+        // and all fire on the first step after Play.
+        app.engine.input.endFrame();
     }
 
     var pass_action = sokol.gfx.PassAction{};
@@ -97,7 +101,15 @@ fn onFrame() callconv(.c) void {
 }
 
 fn onEvent(e: [*c]const sokol.app.Event) callconv(.c) void {
-    if (simgui.handleEvent(e.*)) return;
+    const consumed = simgui.handleEvent(e.*);
+    // Releases and focus loss always reach the game input: a key or button that
+    // went down over the viewport must not stay held because the UI took the
+    // matching up event.
+    const always_forward = switch (e.*.type) {
+        .KEY_UP, .MOUSE_UP, .UNFOCUSED => true,
+        else => false,
+    };
+    if (consumed and !always_forward) return;
     app.engine.input.handleEvent(e);
 }
 
@@ -115,7 +127,8 @@ pub fn main(init: std.process.Init) !void {
     const argv = try init.minimal.args.toSlice(alloc);
     var args = Args.parse(alloc, argv[1..]) catch |err| {
         log.err("Invalid arguments: {s}\n{s}", .{ @errorName(err), Args.usage });
-        return err;
+        // A usage mistake, not a crash: exit without an error trace.
+        std.process.exit(2);
     };
     defer args.deinit(alloc);
     if (args.help) {
@@ -127,7 +140,7 @@ pub fn main(init: std.process.Init) !void {
         .debug_scopes = args.debug_scopes.items,
     }) catch |err| {
         log.err("Could not initialize logging (file={s}): {s}", .{ args.log_file orelse "disabled", @errorName(err) });
-        return err;
+        std.process.exit(1);
     };
     defer logger.deinit();
     logging.active = &logger;
@@ -135,10 +148,14 @@ pub fn main(init: std.process.Init) !void {
     log.info("Starting Zixel {s}; log file: {s}", .{ @import("zixel_buildinfo").version, args.log_file orelse "disabled" });
     const raw_path = args.project_path;
     project.scaffold(alloc, init.io, raw_path) catch |err| {
+        // Already logged (records are written unbuffered); no error trace needed.
         log.err("Could not initialize project '{s}': {s}", .{ raw_path, @errorName(err) });
-        return err;
+        std.process.exit(1);
     };
-    project_path = try std.Io.Dir.cwd().realPathFileAlloc(init.io, raw_path, alloc);
+    project_path = std.Io.Dir.cwd().realPathFileAlloc(init.io, raw_path, alloc) catch |err| {
+        log.err("Could not resolve project path '{s}': {s}", .{ raw_path, @errorName(err) });
+        std.process.exit(1);
+    };
     sokol.app.run(.{
         .init_cb = onInit,
         .frame_cb = onFrame,

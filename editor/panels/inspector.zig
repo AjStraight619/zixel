@@ -9,22 +9,23 @@ pub fn draw(editor: *Editor) void {
     ig.igSetNextWindowSize(.{ .x = 300, .y = 400 }, ig.ImGuiCond_FirstUseEver);
 
     if (ig.igBegin("Inspector", &editor.show_inspector, 0)) {
-        if (editor.selected_entity) |idx| {
+        if (editor.selected_entity) |handle| {
             if (editor.world) |world| {
-                if (idx < world.slots.items.len and world.slots.items[idx].alive) {
-                    const entity = &world.slots.items[idx].entity;
+                // A stale handle (entity removed, slot reused) clears the selection.
+                if (world.get(handle)) |entity| {
                     const body = &entity.body;
 
-                    // Show name if it has one
+                    // Names are slices without a terminator: pass an explicit
+                    // length instead of letting "%s" read past the end.
                     if (entity.name) |n| {
-                        ig.igText("Name: %s", n.ptr);
+                        ig.igText("Name: %.*s", @as(c_int, @intCast(n.len)), n.ptr);
                     } else {
-                        ig.igText("Entity ID: %d", @as(c_int, @intCast(idx)));
+                        ig.igText("Entity ID: %d", @as(c_int, @intCast(handle.index)));
                     }
 
                     switch (entity.owner) {
                         .none => ig.igTextDisabled("Owner: persistent"),
-                        .scene => |s| ig.igText("Owner: %s", s.ptr),
+                        .scene => |s| ig.igText("Owner: %.*s", @as(c_int, @intCast(s.len)), s.ptr),
                     }
 
                     ig.igSeparator();

@@ -15,14 +15,16 @@ pub fn draw(editor: *Editor) void {
             for (world.slots.items, 0..) |slot, i| {
                 if (!slot.alive) continue;
 
-                var buf: [64]u8 = undefined;
+                // "##<slot>" keeps ImGui ids unique when entities share a name
+                // (or a name is too long to fit) without showing in the label.
+                var buf: [96]u8 = undefined;
                 const label = if (slot.entity.name) |n|
-                    std.fmt.bufPrint(&buf, "{s}\x00", .{n}) catch "Entity\x00"
+                    std.fmt.bufPrintZ(&buf, "{s}##{d}", .{ n[0..@min(n.len, 64)], i })
                 else
-                    std.fmt.bufPrint(&buf, "Entity {d}\x00", .{i}) catch "Entity\x00";
+                    std.fmt.bufPrintZ(&buf, "Entity {d}", .{i});
 
-                if (ig.igSelectable(label.ptr)) {
-                    editor.selected_entity = i;
+                if (ig.igSelectable((label catch continue).ptr)) {
+                    editor.selected_entity = .{ .index = @intCast(i), .generation = slot.generation };
                 }
                 count += 1;
             }
