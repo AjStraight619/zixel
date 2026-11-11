@@ -25,10 +25,17 @@ pub const Scratch = struct {
     }
 
     pub fn init(alloc: Allocator, cell_count: usize) !Scratch {
+        const g_score = try alloc.alloc(f32, cell_count);
+        errdefer alloc.free(g_score);
+        const parent = try alloc.alloc(u32, cell_count);
+        errdefer alloc.free(parent);
+        const closed = try alloc.alloc(bool, cell_count);
+        errdefer alloc.free(closed);
+
         var scratch = Scratch{
-            .g_score = try alloc.alloc(f32, cell_count),
-            .parent = try alloc.alloc(u32, cell_count),
-            .closed = try alloc.alloc(bool, cell_count),
+            .g_score = g_score,
+            .parent = parent,
+            .closed = closed,
             .open = std.PriorityQueue(OpenNode, void, compare).initContext({}),
         };
         scratch.reset();
@@ -158,8 +165,11 @@ pub fn findPath(
 
     const width: u32 = grid.width;
     const height: u32 = grid.height;
-    const cell_count: u32 = width * height;
+    const cell_count: usize = @as(usize, width) * @as(usize, height);
 
+    // The scratch buffers must cover this grid (they may have been sized for a
+    // smaller one), and cell indices must fit the u32 the search works in.
+    if (scratch.g_score.len < cell_count or cell_count > no_parent) return false;
     if (start >= cell_count or goal >= cell_count) return false;
     if (grid.isBlockedIdx(start) or grid.isBlockedIdx(goal)) return false;
 
@@ -230,4 +240,25 @@ test "priority queue finds a shortest path around a blocked cell" {
     // Reuse the scratch queue in the opposite direction.
     try std.testing.expect(findPath(alloc, &grid, &scratch, 8, 0, &path));
     try std.testing.expectEqual(@as(u32, 0), path.items[path.items.len - 1]);
+}
+
+test "a scratch sized for a smaller grid is rejected instead of indexed out of bounds" {
+    const Grid = @import("Grid.zig");
+    const alloc = std.testing.allocator;
+    var grid = try Grid.init(alloc, 4, 4, 1, 0, 0);
+    defer grid.deinit(alloc);
+    var scratch = try Scratch.init(alloc, 4);
+    defer scratch.deinit(alloc);
+    var path: std.ArrayList(u32) = .empty;
+    defer path.deinit(alloc);
+    try std.testing.expect(!findPath(alloc, &grid, &scratch, 0, 15, &path));
+}
+
+fn scratchInitWithFailures(alloc: Allocator) !void {
+    var scratch = try Scratch.init(alloc, 16);
+    scratch.deinit(alloc);
+}
+
+test "scratch init cleans up on allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, scratchInitWithFailures, .{});
 }

@@ -62,6 +62,7 @@ pub fn init(alloc: Allocator, cfg: Config) !Nav {
         cfg.origin_x,
         cfg.origin_y,
     );
+    errdefer grid.deinit(alloc);
 
     const scratch = try astar.Scratch.init(alloc, grid.cellCount());
     const agents = std.AutoHashMap(EntityHandle, AgentState).init(alloc);
@@ -104,31 +105,19 @@ pub fn idxToWorldCenter(self: *const Nav, idx: u32) Grid.Point {
 // Bake statics: World -> grid.blocked[]
 // -------------------------------------------------------------------------
 
+/// Marks every cell overlapped by a static body's bounding box as blocked.
 pub fn rebuildBlockedFromWorld(self: *Nav, world: *const World) void {
     @memset(self.grid.blocked, false);
 
-    const Ctx = struct { nav: *Nav };
-    const ctx = Ctx{ .nav = self };
+    for (world.slots.items) |*slot| {
+        if (!slot.alive) continue;
+        const body: *const Body = &slot.entity.body;
+        if (body.kind != .static) continue;
 
-    world.forEachBodyConst(ctx, struct {
-        fn f(ctx_: Ctx, body: *const Body) void {
-            if (body.kind != .static) return;
-
-            switch (body.shape) {
-                .rectangle => |r| {
-                    const tlx = body.position.x - (r.width * 0.5);
-                    const tly = body.position.y - (r.height * 0.5);
-                    ctx_.nav.grid.markRect(tlx, tly, r.width, r.height, true);
-                },
-                .circle => |c| {
-                    const tlx = body.position.x - c.radius;
-                    const tly = body.position.y - c.radius;
-                    const d = c.radius * 2.0;
-                    ctx_.nav.grid.markRect(tlx, tly, d, d, true);
-                },
-            }
-        }
-    }.f);
+        // The bounding box accounts for rotation as well as shape.
+        const box = body.aabb();
+        self.grid.markRect(box.min.x, box.min.y, box.max.x - box.min.x, box.max.y - box.min.y, true);
+    }
 
     // invalidate cached paths
     var it = self.agents.iterator();
@@ -139,8 +128,9 @@ pub fn rebuildBlockedFromWorld(self: *Nav, world: *const World) void {
 // Agent API (engine-like)
 // -------------------------------------------------------------------------
 
-pub fn ensureAgent(self: *Nav, handle: EntityHandle) *AgentState {
-    const gop = self.agents.getOrPut(handle) catch unreachable;
+/// Registers the agent if needed. Fails only when out of memory.
+pub fn ensureAgent(self: *Nav, handle: EntityHandle) !*AgentState {
+    const gop = try self.agents.getOrPut(handle);
     if (!gop.found_existing) gop.value_ptr.* = .{};
     return gop.value_ptr;
 }
@@ -152,13 +142,14 @@ pub fn removeAgent(self: *Nav, handle: EntityHandle) void {
     }
 }
 
-pub fn setAgentParams(self: *Nav, handle: EntityHandle, params: AgentParams) void {
-    var st = self.ensureAgent(handle);
+pub fn setAgentParams(self: *Nav, handle: EntityHandle, params: AgentParams) !void {
+    var st = try self.ensureAgent(handle);
     st.params = params;
 }
 
+/// Stops an agent. Does nothing for a handle that was never registered.
 pub fn clearTarget(self: *Nav, handle: EntityHandle) void {
-    var st = self.ensureAgent(handle);
+    var st = self.agents.getPtr(handle) orelse return;
     st.target_idx = null;
     st.path.clearRetainingCapacity();
     st.waypoint_i = 0;
@@ -166,8 +157,8 @@ pub fn clearTarget(self: *Nav, handle: EntityHandle) void {
 }
 
 /// Set goal from world coords (mouse click, AI destination, etc.)
-pub fn setTargetWorld(self: *Nav, handle: EntityHandle, target: Vec2) void {
-    var st = self.ensureAgent(handle);
+pub fn setTargetWorld(self: *Nav, handle: EntityHandle, target: Vec2) !void {
+    var st = try self.ensureAgent(handle);
 
     const goal = self.worldToIdx(target.x, target.y) orelse {
         self.clearTarget(handle);
@@ -301,4 +292,43 @@ fn repathInternal(self: *Nav, pos: Vec2, goal: u32, st: *AgentState) void {
     }
 
     st.needs_repath = false;
+}
+
+test "static bodies are baked into the grid and far-away targets are ignored" {
+    const alloc = std.testing.allocator;
+    var world = World.init(alloc);
+    defer world.deinit();
+    var nav = try Nav.init(alloc, .{ .cell_size = 10, .width = 8, .height = 8 });
+    defer nav.deinit();
+
+    // One cell exactly, plus a dynamic body that must not block anything.
+    _ = try world.addStaticRect(15, 15, 10, 10, .{});
+    const agent = try world.addDynamicCircle(55, 55, 3, .{});
+    nav.rebuildBlockedFromWorld(&world);
+    var blocked: usize = 0;
+    for (nav.grid.blocked) |b| blocked += @intFromBool(b);
+    try std.testing.expectEqual(@as(usize, 1), blocked);
+    try std.testing.expect(nav.grid.isBlocked(1, 1));
+
+    try nav.setTargetWorld(agent, Vec2.init(5, 5));
+    try std.testing.expect(nav.hasTarget(agent));
+    nav.update(&world, 1.0 / 60.0);
+    try std.testing.expect(nav.getPath(agent).?.len > 0);
+
+    // A target (or an agent) flung far outside the grid is not a crash.
+    try nav.setTargetWorld(agent, Vec2.init(1e12, 5));
+    try std.testing.expect(!nav.hasTarget(agent));
+    try nav.setTargetWorld(agent, Vec2.init(5, 5));
+    world.getBody(agent).?.position = Vec2.init(1e12, std.math.nan(f32));
+    nav.update(&world, 1.0 / 60.0);
+    try std.testing.expectEqual(@as(usize, 0), nav.getPath(agent).?.len);
+}
+
+fn navInitWithFailures(alloc: Allocator) !void {
+    var nav = try Nav.init(alloc, .{ .width = 4, .height = 4 });
+    nav.deinit();
+}
+
+test "nav init cleans up on allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, navInitWithFailures, .{});
 }

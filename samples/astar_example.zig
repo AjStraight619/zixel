@@ -59,7 +59,9 @@ pub const NavMazeScene = struct {
         if (self.ctx.input.isMousePressed(.left)) {
             const p = self.ctx.input.mousePosition();
             if (self.getAgentHandle()) |h| {
-                self.nav.setTargetWorld(h, Vec2.init(p.x, p.y));
+                self.nav.setTargetWorld(h, Vec2.init(p.x, p.y)) catch |err| {
+                    std.log.scoped(.game).err("setTargetWorld failed: {}", .{err});
+                };
             }
         }
 
@@ -123,8 +125,7 @@ pub const NavMazeScene = struct {
         try self.buildLevel();
 
         if (self.getAgentHandle()) |h| {
-            _ = self.nav.ensureAgent(h);
-            self.nav.setAgentParams(h, .{
+            try self.nav.setAgentParams(h, .{
                 .speed = 150,
                 .arrive_radius = 8,
                 .repath_period = 0.15,

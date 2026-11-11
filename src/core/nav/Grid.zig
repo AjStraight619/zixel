@@ -113,7 +113,11 @@ pub fn setBlockedIdx(self: *Grid, i: u32, v: bool) void {
 pub fn worldToCell(self: *const Grid, wx: f32, wy: f32) ?Cell {
     const fx = (wx - self.origin_x) / self.cell_size;
     const fy = (wy - self.origin_y) / self.cell_size;
-    if (fx < 0 or fy < 0) return null;
+    // Range-check as floats first: converting NaN or a far-away coordinate to
+    // an integer is illegal. The negated form also rejects NaN.
+    const w: f32 = @floatFromInt(self.width);
+    const h: f32 = @floatFromInt(self.height);
+    if (!(fx >= 0 and fy >= 0 and fx < w and fy < h)) return null;
 
     const x: u32 = @intFromFloat(fx);
     const y: u32 = @intFromFloat(fy);
@@ -137,23 +141,23 @@ pub fn markRect(self: *Grid, x: f32, y: f32, w: f32, h: f32, v: bool) void {
     const max_fx = (x + w - self.origin_x) / self.cell_size;
     const max_fy = (y + h - self.origin_y) / self.cell_size;
 
-    var min_x: i32 = @intFromFloat(@floor(min_fx));
-    var min_y: i32 = @intFromFloat(@floor(min_fy));
-    var max_x: i32 = @intFromFloat(@floor(max_fx));
-    var max_y: i32 = @intFromFloat(@floor(max_fy));
+    if (std.math.isNan(min_fx) or std.math.isNan(min_fy) or std.math.isNan(max_fx) or std.math.isNan(max_fy)) return;
 
-    // Clamp to grid bounds.
-    if (min_x < 0) min_x = 0;
-    if (min_y < 0) min_y = 0;
-    const w_i32: i32 = @intCast(self.width);
-    const h_i32: i32 = @intCast(self.height);
-    if (max_x >= w_i32) max_x = w_i32 - 1;
-    if (max_y >= h_i32) max_y = h_i32 - 1;
+    // Clamp to grid bounds while still in floating point, so rects far outside
+    // the grid cannot overflow the integer conversion.
+    const w_f: f32 = @floatFromInt(self.width);
+    const h_f: f32 = @floatFromInt(self.height);
+    const min_x: i64 = @intFromFloat(std.math.clamp(@floor(min_fx), 0, w_f));
+    const min_y: i64 = @intFromFloat(std.math.clamp(@floor(min_fy), 0, h_f));
+    // The far edge is exclusive: a rect ending exactly on a cell boundary does
+    // not reach into the next cell. A zero-size rect still marks its own cell.
+    const end_x: i64 = @intFromFloat(std.math.clamp(@max(@ceil(max_fx), @floor(min_fx) + 1), 0, w_f));
+    const end_y: i64 = @intFromFloat(std.math.clamp(@max(@ceil(max_fy), @floor(min_fy) + 1), 0, h_f));
 
-    var yy: i32 = min_y;
-    while (yy <= max_y) : (yy += 1) {
-        var xx: i32 = min_x;
-        while (xx <= max_x) : (xx += 1) {
+    var yy = min_y;
+    while (yy < end_y) : (yy += 1) {
+        var xx = min_x;
+        while (xx < end_x) : (xx += 1) {
             self.setBlocked(@intCast(xx), @intCast(yy), v);
         }
     }
@@ -247,4 +251,52 @@ pub fn setWalls(self: *Grid, x: u32, y: u32, n: bool, e: bool, s: bool, w: bool)
     self.setWallEast(x, y, e);
     self.setWallSouth(x, y, s);
     self.setWallWest(x, y, w);
+}
+
+fn countBlocked(grid: *const Grid) usize {
+    var count: usize = 0;
+    for (grid.blocked) |b| count += @intFromBool(b);
+    return count;
+}
+
+test "worldToCell rejects out-of-range, far-away and non-finite coordinates" {
+    var grid = try Grid.init(std.testing.allocator, 4, 3, 10, 0, 0);
+    defer grid.deinit(std.testing.allocator);
+    try std.testing.expectEqual(Cell{ .x = 3, .y = 2 }, grid.worldToCell(39.9, 29.9).?);
+    try std.testing.expect(grid.worldToCell(40, 5) == null);
+    try std.testing.expect(grid.worldToCell(-0.1, 5) == null);
+    try std.testing.expect(grid.worldToCell(1e12, 5) == null);
+    try std.testing.expect(grid.worldToCell(5, -1e30) == null);
+    try std.testing.expect(grid.worldToCell(std.math.nan(f32), 5) == null);
+    try std.testing.expect(grid.worldToCell(std.math.inf(f32), 5) == null);
+}
+
+test "markRect covers exactly the cells a rect overlaps" {
+    var grid = try Grid.init(std.testing.allocator, 8, 8, 10, 0, 0);
+    defer grid.deinit(std.testing.allocator);
+
+    // Exactly one cell: the far edges sit on cell boundaries.
+    grid.markRect(0, 0, 10, 10, true);
+    try std.testing.expectEqual(@as(usize, 1), countBlocked(&grid));
+    try std.testing.expect(grid.isBlocked(0, 0));
+
+    // Straddling a boundary covers both sides.
+    @memset(grid.blocked, false);
+    grid.markRect(5, 5, 10, 10, true);
+    try std.testing.expectEqual(@as(usize, 4), countBlocked(&grid));
+
+    // A point still marks the cell it is in.
+    @memset(grid.blocked, false);
+    grid.markRect(25, 35, 0, 0, true);
+    try std.testing.expectEqual(@as(usize, 1), countBlocked(&grid));
+    try std.testing.expect(grid.isBlocked(2, 3));
+
+    // Rects outside, far away, or not finite are clipped instead of crashing.
+    @memset(grid.blocked, false);
+    grid.markRect(-1e30, -1e30, 10, 10, true);
+    grid.markRect(1e30, 0, 1e30, 10, true);
+    grid.markRect(std.math.nan(f32), 0, 10, 10, true);
+    try std.testing.expectEqual(@as(usize, 0), countBlocked(&grid));
+    grid.markRect(-1e30, -1e30, std.math.inf(f32), std.math.inf(f32), true);
+    try std.testing.expectEqual(@as(usize, 64), countBlocked(&grid));
 }
