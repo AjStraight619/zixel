@@ -4,3 +4,6 @@ zig-pkg/
 .env
 .zwag/
 zwag.log
+# Project files the editor scaffolds when run from the repository root
+/assets/
+/settings/
