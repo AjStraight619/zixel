@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Body = @import("Body.zig");
+const Aabb = @import("../math/Aabb.zig");
 
 pub const CollisionPair = struct {
     a: *Body,
@@ -11,8 +12,16 @@ pub const SpatialHash = struct {
     cell_size: f32,
     inv_cell_size: f32,
 
-    // The Grid: Maps "Cell Hash" -> "List of Bodies in that cell"
-    cells: std.AutoHashMap(u64, std.ArrayList(*Body)),
+    // The Grid: Maps "Cell Hash" -> "List of Bodies in that cell", each body
+    // as its index into `bodies` and `bounds`.
+    cells: std.AutoHashMap(u64, std.ArrayList(u32)),
+
+    // Every body placed by the latest update and its bounds, worked out once
+    // per body. A body is in several cells and is compared with everything
+    // else in each of them, so asking it for its bounds each time would redo
+    // the same trigonometry dozens of times a step.
+    bodies: std.ArrayList(*Body) = .empty,
+    bounds: std.ArrayList(Aabb) = .empty,
 
     // The Cache: A linear list of unique pairs found this frame
     pairs: std.ArrayList(CollisionPair),
@@ -28,7 +37,7 @@ pub const SpatialHash = struct {
         return .{
             .cell_size = cell_size,
             .inv_cell_size = 1.0 / cell_size,
-            .cells = std.AutoHashMap(u64, std.ArrayList(*Body)).init(alloc),
+            .cells = std.AutoHashMap(u64, std.ArrayList(u32)).init(alloc),
             .pairs = .empty,
             .alloc = alloc,
         };
@@ -40,6 +49,8 @@ pub const SpatialHash = struct {
             list.deinit(self.alloc);
         }
         self.cells.deinit();
+        self.bodies.deinit(self.alloc);
+        self.bounds.deinit(self.alloc);
         self.pairs.deinit(self.alloc);
         self.stale_keys.deinit(self.alloc);
     }
@@ -83,6 +94,8 @@ pub const SpatialHash = struct {
         var it = self.cells.valueIterator();
         while (it.next()) |list| list.clearRetainingCapacity();
         self.pairs.clearRetainingCapacity();
+        self.bodies.clearRetainingCapacity();
+        self.bounds.clearRetainingCapacity();
         self.used_cells = 0;
 
         var body_iter = bodies;
@@ -96,6 +109,10 @@ pub const SpatialHash = struct {
             const min_y = self.getCellCoord(aabb.min.y);
             const max_y = self.getCellCoord(aabb.max.y);
 
+            const index: u32 = @intCast(self.bodies.items.len);
+            try self.bodies.append(self.alloc, body);
+            try self.bounds.append(self.alloc, aabb);
+
             var y = min_y;
             while (y <= max_y) : (y += 1) {
                 var x = min_x;
@@ -106,7 +123,7 @@ pub const SpatialHash = struct {
                         res.value_ptr.* = .empty;
                     }
                     if (res.value_ptr.items.len == 0) self.used_cells += 1;
-                    try res.value_ptr.append(self.alloc, body);
+                    try res.value_ptr.append(self.alloc, index);
                 }
             }
         }
@@ -125,12 +142,16 @@ pub const SpatialHash = struct {
             if (items.len < 2) continue;
             const cell_key = entry.key_ptr.*;
 
-            for (items, 0..) |b1, i| {
-                const bounds1 = b1.aabb();
-                for (items[i + 1 ..]) |b2| {
-                    if (b1.kind != .dynamic and b2.kind != .dynamic) continue;
-                    const bounds2 = b2.aabb();
+            for (items, 0..) |index1, i| {
+                const bounds1 = self.bounds.items[index1];
+                for (items[i + 1 ..]) |index2| {
+                    // Bounds first: they sit together in one array, while the
+                    // bodies are spread through the world's storage.
+                    const bounds2 = self.bounds.items[index2];
                     if (!bounds1.intersects(bounds2)) continue;
+                    const b1 = self.bodies.items[index1];
+                    const b2 = self.bodies.items[index2];
+                    if (b1.kind != .dynamic and b2.kind != .dynamic) continue;
 
                     const owner_cell = hashCoords(
                         self.getCellCoord(@max(bounds1.min.x, bounds2.min.x)),
@@ -217,4 +238,31 @@ test "bodies sharing many cells are paired exactly once" {
     }
     try std.testing.expect(expected > 100);
     try std.testing.expectEqual(expected, hash.pairs.items.len);
+}
+
+test "bounds are worked out once per body, however many cells and neighbours it has" {
+    const Vec2 = @import("../math/Vec2.zig");
+    const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
+    var hash = SpatialHash.init(std.testing.allocator, 64);
+    defer hash.deinit();
+    // Three overlapping rotated boxes, each spanning several cells, and one
+    // body that cannot be placed.
+    var bodies = [_]Body{
+        Body.initDynamic(PhysicsShape.rect(150, 150), Vec2.init(0, 0), .{ .rotation = 0.4 }),
+        Body.initDynamic(PhysicsShape.rect(150, 150), Vec2.init(60, 20), .{ .rotation = 1.1 }),
+        Body.initStatic(PhysicsShape.rect(150, 150), Vec2.init(-40, 70), .{ .rotation = 2.0 }),
+        Body.initDynamic(PhysicsShape.circ(4), Vec2.init(std.math.nan(f32), 0), .{}),
+    };
+    try hash.update(TestBodies{ .items = &bodies });
+    try std.testing.expectEqual(@as(usize, 3), hash.bodies.items.len);
+    try std.testing.expectEqual(@as(usize, 3), hash.bounds.items.len);
+    for (hash.bodies.items, hash.bounds.items) |body, bounds| {
+        try std.testing.expectEqual(body.aabb(), bounds);
+    }
+    try std.testing.expectEqual(@as(usize, 3), hash.pairs.items.len);
+
+    // A second update starts again rather than adding to the first.
+    try hash.update(TestBodies{ .items = bodies[0..2] });
+    try std.testing.expectEqual(@as(usize, 2), hash.bodies.items.len);
+    try std.testing.expectEqual(@as(usize, 1), hash.pairs.items.len);
 }
