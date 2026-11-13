@@ -6,6 +6,40 @@ bounds, external-force wake-up, and kinematic contact velocity (including angula
 motion and waking bodies on impact). Bounds caching remains experimental.
 The recorded timings have not been replaced with measurements of those fixes.
 
+## Update, 2026-11-13: contact solver
+
+The collision response was replaced after this experiment. Contacts are now
+detected once per step and solved with accumulated, clamped impulses over
+several velocity iterations, warm started from the previous step, followed by
+position iterations on the stored contacts. Rectangles resting flat get two
+contact points. A shape that ends up inside another is pushed out through the
+nearest face; before, a ball inside a thick wall was pushed along the wall and
+could travel out through it.
+
+Same machine, Zig 0.16.0, ReleaseFast, not pinned with `taskset`, one suite
+each. "Before" is commit `045dd6d`. Milliseconds per update.
+
+| Workload | Before mean | After mean | Before p95 | After p95 | Before escaped | After escaped |
+|---|---:|---:|---:|---:|---:|---:|
+| Sparse moving circles | 0.171 | 0.158 | 0.240 | 0.194 | 0 | 0 |
+| Dense circle cloud | 1.838 | 1.924 | 1.946 | 2.130 | 0 | 0 |
+| Mixed enclosure, sleeping disabled | 9.292 | 7.639 | 13.398 | 8.276 | 684 | 0 |
+| Mixed enclosure, sleeping enabled | 9.270 | 7.701 | 13.491 | 8.339 | 685 | 0 |
+
+The mixed enclosure now keeps all 2,000 bodies, so its timing describes a
+contained pile for the first time. The likely reasons it is faster, not measured
+separately: there are fewer candidate pairs (7,109 against 11,811), and
+detection no longer repeats for every iteration.
+Allocation growth after warm-up in that scene rose from about 0.6 MB to 2.2 MB
+per run, from contact and stored-impulse storage growing with the pile.
+
+There is still no continuous collision detection. A body that moves further in
+one step than the obstacle is thick can pass through it: in the physics lab
+(`zig build run-physics-lab -- --headless`) an 8 px ball at 2000 px/s passes
+24 px, 10 px and 4 px walls, and at 1200 px/s it passes the 4 px wall.
+
+The sections below are the original experiment and are unchanged.
+
 ## Findings
 
 - Compiler optimization has a large effect: the crowded 2,000-body case averages
