@@ -15,6 +15,7 @@ zig build test -Dtest-filter="user data"   # only tests whose name contains this
 zig build run -- /path/to/project
 zig build run-physics-example
 zig build run-persist-example   # user data surviving a scene change
+zig build run-physics-lab       # seven small physics scenes, keys 1-7
 zig build cli -- version
 ```
 

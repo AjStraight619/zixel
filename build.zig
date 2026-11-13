@@ -118,6 +118,7 @@ pub fn build(b: *std.Build) !void {
         .{ .exe_name = "ramps_example", .file = "samples/ramps_example.zig", .run_step = "run-ramps-example", .desc = "Run the ramps example" },
         .{ .exe_name = "angular_vel_example", .file = "samples/angular_vel_example.zig", .run_step = "run-angular-vel-example", .desc = "Run the angular velocity example" },
         .{ .exe_name = "astar_example", .file = "samples/astar_example.zig", .run_step = "run-astar-example", .desc = "Run the astar example" },
+        .{ .exe_name = "physics_lab", .file = "samples/physics_lab.zig", .run_step = "run-physics-lab", .desc = "Run the physics lab (-- --headless for measurements)" },
         .{ .exe_name = "persist_example", .file = "samples/persist_example.zig", .run_step = "run-persist-example", .desc = "Run the persistence example (-- --headless for a transcript)" },
     };
 
