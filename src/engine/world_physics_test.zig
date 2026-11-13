@@ -340,6 +340,32 @@ test "sleeping bodies fall when what they rest on is removed, stack included" {
     try std.testing.expect(upper.position.y > upper_y + 100);
 }
 
+test "a zero-mass dynamic body does not fall through the floor" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{});
+    defer physics.deinit();
+    for ([_]f32{ 0, -5, std.math.nan(f32) }) |mass| {
+        world.clear();
+        // Resting on a floor whose top is at y = 10, under default gravity.
+        const handle = try world.spawn(.{ .position = .init(0, 0), .body = .{ .shape = .circ(10), .mass = mass } });
+        _ = try world.spawn(.{ .position = .init(0, 20), .body = .{ .kind = .static, .shape = .rect(400, 20) } });
+        stepFor(&physics, &world, 1);
+        const body = &world.get(handle).?.body;
+        try std.testing.expectApproxEqAbs(@as(f32, 0), body.position.y, 0.5);
+        try std.testing.expectEqual(@as(f32, 0), body.velocity.x);
+        try std.testing.expectEqual(@as(f32, 0), body.velocity.y);
+
+        // It still moves when the game gives it a velocity. By now it has
+        // fallen asleep on the floor, so it is woken first.
+        body.wakeUp();
+        body.velocity = .init(60, 0);
+        stepFor(&physics, &world, 0.5);
+        try std.testing.expect(body.position.x > 20);
+        try std.testing.expectApproxEqAbs(@as(f32, 0), body.position.y, 0.5);
+    }
+}
+
 test "a zero-mass dynamic body never produces NaN" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();

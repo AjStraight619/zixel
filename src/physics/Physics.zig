@@ -160,7 +160,10 @@ fn integrateVelocities(self: *Physics, bodies: anytype, dt: f32) void {
 
         // Gravity affects awake bodies without resetting their sleep timers.
         // Explicit forces use Body.applyForce to wake the body instead.
-        body.acceleration = body.acceleration.add(self.cfg.gravity);
+        // A body with no usable mass counts as infinitely heavy, so no
+        // contact can hold it up: gravity would carry it through every
+        // floor. It is left to move by its own velocity alone.
+        if (body.invMass() != 0.0) body.acceleration = body.acceleration.add(self.cfg.gravity);
 
         body.velocity = body.velocity.add(body.acceleration.scale(dt));
         body.acceleration = Vec2.zero;
