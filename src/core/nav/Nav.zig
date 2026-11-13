@@ -302,8 +302,8 @@ test "static bodies are baked into the grid and far-away targets are ignored" {
     defer nav.deinit();
 
     // One cell exactly, plus a dynamic body that must not block anything.
-    _ = try world.addStaticRect(15, 15, 10, 10, .{});
-    const agent = try world.addDynamicCircle(55, 55, 3, .{});
+    _ = try world.spawn(.{ .position = .init(15, 15), .body = .{ .kind = .static, .shape = .rect(10, 10) } });
+    const agent = try world.spawn(.{ .position = .init(55, 55), .body = .{ .shape = .circ(3) } });
     nav.rebuildBlockedFromWorld(&world);
     var blocked: usize = 0;
     for (nav.grid.blocked) |b| blocked += @intFromBool(b);
@@ -319,7 +319,7 @@ test "static bodies are baked into the grid and far-away targets are ignored" {
     try nav.setTargetWorld(agent, Vec2.init(1e12, 5));
     try std.testing.expect(!nav.hasTarget(agent));
     try nav.setTargetWorld(agent, Vec2.init(5, 5));
-    world.getBody(agent).?.position = Vec2.init(1e12, std.math.nan(f32));
+    world.get(agent).?.body.position = Vec2.init(1e12, std.math.nan(f32));
     nav.update(&world, 1.0 / 60.0);
     try std.testing.expectEqual(@as(usize, 0), nav.getPath(agent).?.len);
 }

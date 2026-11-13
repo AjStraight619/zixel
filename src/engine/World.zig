@@ -1,7 +1,6 @@
 //! Entity storage, lookup, and lifetime. Simulation and drawing are separate.
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Vec2 = @import("../math/Vec2.zig");
 const Body = @import("../physics/Body.zig");
 const BodyOptions = Body.BodyOptions;
 const PhysicsShape = @import("../math/shapes.zig").PhysicsShape;
@@ -210,60 +209,13 @@ fn insertEntity(self: *World, entity: Entity) !EntityHandle {
     return EntityHandle{ .index = index, .generation = 1 };
 }
 
-// ============================================================================
-// Legacy body API (for compatibility - wraps entity API)
-// ============================================================================
-
-/// Legacy: add a raw body (creates entity with no name/sprite)
-pub fn addBody(self: *World, body: Body) !EntityHandle {
-    return self.insertEntity(Entity{ .body = body });
-}
-
-/// Legacy: get body by handle
-pub fn getBody(self: *World, handle: EntityHandle) ?*Body {
-    if (self.get(handle)) |entity| {
-        return &entity.body;
-    }
-    return null;
-}
-
-/// Legacy: clear all bodies
-pub fn clearBodies(self: *World) void {
-    self.clearAll(false);
-}
-
-/// Legacy convenience constructors
-pub fn addStaticRect(self: *World, x: f32, y: f32, w: f32, h: f32, opts: BodyOptions) !EntityHandle {
-    return self.addBody(Body.initStatic(PhysicsShape.rect(w, h), Vec2.init(x, y), opts));
-}
-
-pub fn addDynamicRect(self: *World, x: f32, y: f32, w: f32, h: f32, opts: BodyOptions) !EntityHandle {
-    return self.addBody(Body.initDynamic(PhysicsShape.rect(w, h), Vec2.init(x, y), opts));
-}
-
-pub fn addKinematicRect(self: *World, x: f32, y: f32, w: f32, h: f32, opts: BodyOptions) !EntityHandle {
-    return self.addBody(Body.initKinematic(PhysicsShape.rect(w, h), Vec2.init(x, y), opts));
-}
-
-pub fn addStaticCircle(self: *World, x: f32, y: f32, radius: f32, opts: BodyOptions) !EntityHandle {
-    return self.addBody(Body.initStatic(PhysicsShape.circ(radius), Vec2.init(x, y), opts));
-}
-
-pub fn addDynamicCircle(self: *World, x: f32, y: f32, radius: f32, opts: BodyOptions) !EntityHandle {
-    return self.addBody(Body.initDynamic(PhysicsShape.circ(radius), Vec2.init(x, y), opts));
-}
-
-pub fn addKinematicCircle(self: *World, x: f32, y: f32, radius: f32, opts: BodyOptions) !EntityHandle {
-    return self.addBody(Body.initKinematic(PhysicsShape.circ(radius), Vec2.init(x, y), opts));
-}
-
 test "removed entity handles stay invalid when slots are reused" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();
-    const first = try world.addDynamicRect(0, 0, 10, 10, .{});
-    const second = try world.addStaticRect(0, 0, 10, 10, .{});
+    const first = try world.spawn(.{ .position = .init(0, 0), .body = .{ .shape = .rect(10, 10) } });
+    const second = try world.spawn(.{ .position = .init(0, 0), .body = .{ .kind = .static, .shape = .rect(10, 10) } });
     world.clearAll(false);
-    _ = try world.addDynamicRect(0, 0, 10, 10, .{});
+    _ = try world.spawn(.{ .position = .init(0, 0), .body = .{ .shape = .rect(10, 10) } });
     try std.testing.expect(world.get(first) == null);
     try std.testing.expect(world.get(second) == null);
     var iter = world.bodies();

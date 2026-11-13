@@ -143,34 +143,57 @@ fn populate(world: *World, comptime scenario: Scenario, count: usize) !void {
     if (scenario == .mixed_awake or scenario == .mixed_sleeping) {
         // Start the arena in positive coordinates. Escaping bodies can later
         // reach negative coordinates; the translated cases isolate that bug.
-        _ = try world.addStaticRect(700, 1250, 1200, 100, .{});
-        _ = try world.addStaticRect(700, 150, 1200, 100, .{});
-        _ = try world.addStaticRect(150, 700, 100, 1000, .{});
-        _ = try world.addStaticRect(1250, 700, 100, 1000, .{});
+        _ = try world.spawn(.{
+            .position = .init(700, 1250),
+            .body = .{ .kind = .static, .shape = .rect(1200, 100) },
+        });
+        _ = try world.spawn(.{ .position = .init(700, 150), .body = .{ .kind = .static, .shape = .rect(1200, 100) } });
+        _ = try world.spawn(.{ .position = .init(150, 700), .body = .{ .kind = .static, .shape = .rect(100, 1000) } });
+        _ = try world.spawn(.{
+            .position = .init(1250, 700),
+            .body = .{ .kind = .static, .shape = .rect(100, 1000) },
+        });
     }
     for (0..count) |i| {
         switch (scenario) {
             .sparse => {
-                _ = try world.addDynamicCircle(200 + @as(f32, @floatFromInt(i % 50)) * 80, 200 + @as(f32, @floatFromInt(i / 50)) * 80, 8, .{ .velocity = .{ .x = 30, .y = 0 } });
+                _ = try world.spawn(.{
+                    .position = .init(200 + @as(f32, @floatFromInt(i % 50)) * 80, 200 + @as(f32, @floatFromInt(i / 50)) * 80),
+                    .body = .{ .shape = .circ(8), .velocity = .{ .x = 30, .y = 0 } },
+                });
             },
             .circles => {
-                _ = try world.addDynamicCircle(200 + random.float(f32) * 500, 200 + random.float(f32) * 500, 10, .{});
+                _ = try world.spawn(.{
+                    .position = .init(200 + random.float(f32) * 500, 200 + random.float(f32) * 500),
+                    .body = .{ .shape = .circ(10) },
+                });
             },
             .mixed_awake, .mixed_sleeping => {
                 const x = 220 + random.float(f32) * 960;
                 const y = 220 + random.float(f32) * 960;
                 const velocity = Vec2{ .x = random.float(f32) * 400 - 200, .y = random.float(f32) * 400 - 200 };
                 if (i % 2 == 0) {
-                    _ = try world.addDynamicCircle(x, y, 8, .{ .velocity = velocity });
+                    _ = try world.spawn(.{
+                        .position = .init(x, y),
+                        .body = .{ .shape = .circ(8), .velocity = velocity },
+                    });
                 } else {
-                    _ = try world.addDynamicRect(x, y, 15, 15, .{ .velocity = velocity, .rotation = random.float(f32) * std.math.pi * 2 });
+                    _ = try world.spawn(.{
+                        .position = .init(x, y),
+                        .rotation = random.float(f32) * std.math.pi * 2,
+                        .body = .{ .shape = .rect(15, 15), .velocity = velocity },
+                    });
                 }
             },
             .broadphase_positive, .broadphase_negative => {
                 // The same non-overlapping rectangles translated by whole hash
                 // cells. Correct AABBs yield zero candidate pairs in both cases.
                 const offset: f32 = if (scenario == .broadphase_positive) 128 else -640;
-                _ = try world.addDynamicRect(offset + @as(f32, @floatFromInt(i % 16)) * 32, offset + @as(f32, @floatFromInt(i / 16)) * 32, 15, 15, .{ .rotation = 0.3 });
+                _ = try world.spawn(.{
+                    .position = .init(offset + @as(f32, @floatFromInt(i % 16)) * 32, offset + @as(f32, @floatFromInt(i / 16)) * 32),
+                    .rotation = 0.3,
+                    .body = .{ .shape = .rect(15, 15) },
+                });
             },
         }
     }
