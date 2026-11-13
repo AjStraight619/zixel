@@ -20,6 +20,9 @@ pub fn init(alloc: Allocator) World {
 }
 
 pub fn deinit(self: *World) void {
+    for (self.slots.items) |*slot| {
+        if (slot.alive) slot.entity.user_data.deinit(self.alloc);
+    }
     self.name_index.deinit();
     self.slots.deinit(self.alloc);
     self.free_indices.deinit(self.alloc);
@@ -122,6 +125,7 @@ fn removeSlot(self: *World, index: u32) void {
             }
         }
     }
+    slot.entity.user_data.deinit(self.alloc);
     slot.alive = false;
     slot.generation +%= 1;
     // insertEntity keeps room for every slot, so this cannot fail.
@@ -231,6 +235,47 @@ test "entities sharing a name do not break lookup when one of them is removed" {
     try std.testing.expect(world.remove(second));
     try std.testing.expect(world.getByName("Enemy") == null);
     try std.testing.expect(!world.remove(second));
+}
+
+const TestStats = struct {
+    label: []u8,
+    released: *u32,
+
+    fn init(alloc: Allocator, label: []const u8, released: *u32) !TestStats {
+        return .{ .label = try alloc.dupe(u8, label), .released = released };
+    }
+
+    pub fn deinit(self: *TestStats, alloc: Allocator) void {
+        alloc.free(self.label);
+        self.released.* += 1;
+    }
+};
+
+test "user data lives as long as its entity, not the scene that attached it" {
+    const alloc = std.testing.allocator;
+    var world = World.init(alloc);
+    var released: u32 = 0;
+
+    const player_handle = try world.spawn(.{ .name = "Player" });
+    const enemy_handle = try world.spawn(.{ .name = "Enemy", .owner = .{ .scene = "Level1" } });
+    const player = world.get(player_handle).?;
+    player.user_data = try .init(alloc, TestStats, try .init(alloc, "hero", &released));
+    world.get(enemy_handle).?.user_data = try .init(alloc, TestStats, try .init(alloc, "grunt", &released));
+
+    // Tearing down the scene releases only the data on that scene's entities.
+    world.removeByOwner(.{ .scene = "Level1" });
+    try std.testing.expectEqual(@as(u32, 1), released);
+    try std.testing.expectEqualStrings("hero", player.user_data.as(TestStats).?.label);
+    try std.testing.expect(player.user_data.as(u32) == null);
+
+    // A slot reused by a new entity starts without the previous entity's data.
+    const next = try world.spawn(.{ .owner = .{ .scene = "Level2" } });
+    try std.testing.expectEqual(enemy_handle.index, next.index);
+    try std.testing.expect(world.get(next).?.user_data.as(TestStats) == null);
+
+    // Whatever is still alive is released with the world.
+    world.deinit();
+    try std.testing.expectEqual(@as(u32, 2), released);
 }
 
 fn spawnAndRemoveWithFailures(alloc: Allocator) !void {

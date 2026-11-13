@@ -183,6 +183,27 @@ defer snapshot.deinit();
 The returned `OwnedEntityDef` owns its storage. Free it once all users of
 `snapshot.value` are finished; do not copy the owner and free it twice.
 
+## Entity user data
+
+Game data attached to an entity belongs to the entity, not to the scene that
+attached it. `user_data` is a plain field; the world releases it when the
+entity is removed, so data on a persistent entity survives scene changes:
+
+```zig
+const Stats = struct { health: i32 = 100, coins: u32 = 0 };
+
+const player = world.get(handle).?;
+player.user_data = try .init(world.alloc, Stats, .{});
+if (player.user_data.as(Stats)) |stats| stats.coins += 1;
+```
+
+Allocate with the world's allocator, since that is what releases the data. If
+the type declares `pub fn deinit(self: *T, alloc: Allocator) void`, it runs on
+release. `as` returns null when there is no data or it was stored as a
+different type. Assigning over existing data does not release it; call
+`player.user_data.deinit(world.alloc)` first. User data is not part of
+`EntityDef` and is not saved with a scene.
+
 ## Editor binaries
 
 Editor binaries are specific to an OS and architecture and may require system
