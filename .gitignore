@@ -7,3 +7,6 @@ zwag.log
 # Project files the editor scaffolds when run from the repository root
 /assets/
 /settings/
+# Scratch projects created while trying the editor
+/game_1/
+/game_2/
