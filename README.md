@@ -40,9 +40,9 @@ zig build run -- /path/to/project --log-file editor.log --debug-log zixel_physic
 
 Runtime modules log through `std.log.scoped`, so a game chooses its own output
 with `std_options` (`logFn`, `log_level`, `log_scope_levels`). `zixel.logging.Logger`
-is the optional sink the editor uses. In Debug builds the default `std.log`
-level prints the physics statistics line every `debug_log_interval` steps; set
-that field to 0, or raise the level for `.zixel_physics`, to silence it.
+is the optional sink the editor uses. Physics statistics are off by default; set
+`debug_log_interval` in the physics config to print one debug line for
+`.zixel_physics` every that many steps.
 
 `zig build cli -- new my-game` creates a game project that depends on this
 checkout (the location recorded when the CLI was built). It refuses to write

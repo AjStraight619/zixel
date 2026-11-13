@@ -30,7 +30,7 @@ pub const Config = struct {
     max_linear_velocity: f32 = 2000.0,
     max_angular_velocity: f32 = 20.0,
     /// Interval in physics steps for scoped debug statistics; zero disables them.
-    debug_log_interval: u64 = 60,
+    debug_log_interval: u64 = 0,
 };
 
 const PhysicsConfigError = error{
