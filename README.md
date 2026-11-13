@@ -12,6 +12,7 @@ zig build                   # editor, CLI, and all samples
 zig build test
 zig build run -- /path/to/project
 zig build run-physics-example
+zig build run-persist-example   # user data surviving a scene change
 zig build cli -- version
 ```
 

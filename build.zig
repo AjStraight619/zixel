@@ -107,6 +107,7 @@ pub fn build(b: *std.Build) !void {
         .{ .exe_name = "ramps_example", .file = "samples/ramps_example.zig", .run_step = "run-ramps-example", .desc = "Run the ramps example" },
         .{ .exe_name = "angular_vel_example", .file = "samples/angular_vel_example.zig", .run_step = "run-angular-vel-example", .desc = "Run the angular velocity example" },
         .{ .exe_name = "astar_example", .file = "samples/astar_example.zig", .run_step = "run-astar-example", .desc = "Run the astar example" },
+        .{ .exe_name = "persist_example", .file = "samples/persist_example.zig", .run_step = "run-persist-example", .desc = "Run the persistence example (-- --headless for a transcript)" },
     };
 
     inline for (samples) |s| {
@@ -127,6 +128,7 @@ pub fn build(b: *std.Build) !void {
 
         const run_sample_step = b.step(s.run_step, s.desc);
         const run_sample_cmd = b.addRunArtifact(sample_exe);
+        if (b.args) |args| run_sample_cmd.addArgs(args);
         run_sample_step.dependOn(&run_sample_cmd.step);
     }
 
