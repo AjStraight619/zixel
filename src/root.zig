@@ -11,7 +11,6 @@ pub const Ctx = engine.Ctx;
 
 pub const Input = engine.Input;
 pub const Renderer = engine.Renderer;
-pub const Renderable = engine.Renderable;
 pub const Scene = engine.Scene;
 pub const Sprite = engine.Sprite;
 
