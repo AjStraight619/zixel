@@ -12,7 +12,10 @@ const Physics = @This();
 
 pub const Config = struct {
     gravity: Vec2 = Vec2{ .x = 0, .y = 980 },
+    /// Passes that push overlapping bodies apart, after velocities are solved.
     position_iterations: u32 = 8,
+    /// Passes over every contact to settle velocities. More passes let
+    /// impulses travel further through stacks and piles.
     velocity_iterations: u32 = 8,
     physics_time_step: f32 = 1.0 / 60.0,
     max_delta_time: f32 = 1.0 / 30.0,
@@ -24,6 +27,8 @@ pub const Config = struct {
     sleep_angular_velocity_threshold: f32 = 0.5,
     contact_slop: f32 = 0.3,
     baumgarte_factor: f32 = 0.5,
+    /// Approach speeds at or below this do not bounce. The speed gravity adds
+    /// in two steps is always used as a floor, so resting bodies stay at rest.
     restitution_clamp_threshold: f32 = 3.0,
     linear_damping: f32 = 0.002,
     angular_damping: f32 = 0.05,
@@ -43,6 +48,40 @@ const PhysicsConfigError = error{
     NegativeRestitutionClamp,
 };
 
+/// Identifies one contact point between two bodies from one step to the next.
+/// The addresses are only ever compared, never followed.
+const ContactKey = struct {
+    low: usize,
+    high: usize,
+    index: u8,
+    count: u8,
+
+    /// `index` counts along the contact's tangent, which reverses when the
+    /// broadphase reports the pair in the other order.
+    fn init(body1: *const Body, body2: *const Body, index: usize, count: usize) ContactKey {
+        const a = @intFromPtr(body1);
+        const b = @intFromPtr(body2);
+        const in_order = a < b;
+        return .{
+            .low = @min(a, b),
+            .high = @max(a, b),
+            .index = @intCast(if (in_order) index else count - 1 - index),
+            .count = @intCast(count),
+        };
+    }
+};
+
+/// What a contact ended the step with, for the next step to start from.
+const StoredImpulse = struct {
+    /// Normal from the lower-addressed body to the higher one.
+    normal: Vec2,
+    normal_impulse: f32,
+    tangent_impulse: f32,
+};
+
+/// A stored impulse is reused only while the contact still faces the same way.
+const warm_start_alignment: f32 = 0.95;
+
 pub const DebugStats = struct {
     active_bodies: u32 = 0,
     sleeping_bodies: u32 = 0,
@@ -52,7 +91,14 @@ pub const DebugStats = struct {
     max_velocity: f32 = 0,
 };
 
+alloc: Allocator,
 spatial_hash: SpatialHash,
+/// Contacts found this step; rebuilt from scratch every step.
+contacts: std.ArrayList(response.Contact) = .empty,
+/// The key of each entry in `contacts`, in the same order.
+contact_keys: std.ArrayList(ContactKey) = .empty,
+/// Impulses the previous step's contacts ended with.
+stored_impulses: std.AutoHashMapUnmanaged(ContactKey, StoredImpulse) = .empty,
 cfg: Config,
 accumulated_time: f32 = 0,
 step_count: u64 = 0,
@@ -60,11 +106,14 @@ debug_stats: DebugStats = .{},
 
 pub fn init(alloc: Allocator, cfg: Config) PhysicsConfigError!Physics {
     try validateConfig(cfg);
-    return .{ .spatial_hash = SpatialHash.init(alloc, 64), .cfg = cfg };
+    return .{ .alloc = alloc, .spatial_hash = SpatialHash.init(alloc, 64), .cfg = cfg };
 }
 
 pub fn deinit(self: *Physics) void {
     self.spatial_hash.deinit();
+    self.contacts.deinit(self.alloc);
+    self.contact_keys.deinit(self.alloc);
+    self.stored_impulses.deinit(self.alloc);
 }
 
 /// Accepts a copyable iterator with next() ?*Body. Body storage must remain
@@ -89,7 +138,7 @@ fn stepPhysics(self: *Physics, bodies: anytype, dt: f32) void {
 
     self.integrateVelocities(bodies, dt);
     self.integratePositions(bodies, dt);
-    self.solveCollisions(bodies);
+    self.solveCollisions(bodies, dt);
     self.applyDamping(bodies);
     self.maybeLogDebug();
 }
@@ -182,7 +231,23 @@ fn noteSupport(self: *const Physics, body: *Body, other: *const Body, normal: ?V
     if (toward_other.dot(down) > 0) body.has_support = true;
 }
 
-fn solveCollisions(self: *Physics, bodies: anytype) void {
+/// Room for `count` contacts this step and for remembering all of them after.
+fn reserveContacts(self: *Physics, count: usize) !void {
+    try self.contacts.ensureTotalCapacity(self.alloc, count);
+    try self.contact_keys.ensureTotalCapacity(self.alloc, count);
+    try self.stored_impulses.ensureTotalCapacity(self.alloc, @intCast(count));
+}
+
+/// A contact needs solving only if it can change something: at least one
+/// body is dynamic, and they are not both already at rest.
+fn needsSolving(body1: *const Body, body2: *const Body) bool {
+    if (body1.kind != .dynamic and body2.kind != .dynamic) return false;
+    const inert1 = body1.kind == .static or body1.isSleeping();
+    const inert2 = body2.kind == .static or body2.isSleeping();
+    return !(inert1 and inert2);
+}
+
+fn solveCollisions(self: *Physics, bodies: anytype, dt: f32) void {
     // Build pairs from entity bodies
     self.spatial_hash.update(bodies) catch |err| {
         log.err("Broadphase failed: {}", .{err});
@@ -196,42 +261,95 @@ fn solveCollisions(self: *Physics, bodies: anytype) void {
     const pairs = self.spatial_hash.pairs.items;
     self.debug_stats.collision_checks = @intCast(pairs.len);
 
-    for (0..self.cfg.position_iterations) |iter| {
-        for (pairs) |pair| {
-            const body1 = pair.a;
-            const body2 = pair.b;
-            const contact = checkBodiesCollision(body1, body2);
+    // Collision detection runs once per step. Every pass below works on the
+    // contacts found here.
+    self.contacts.clearRetainingCapacity();
+    self.contact_keys.clearRetainingCapacity();
+    self.reserveContacts(pairs.len * 2) catch |err| {
+        log.err("Contact storage failed: {}", .{err});
+        self.stored_impulses.clearRetainingCapacity();
+        return;
+    };
+    const restitution_threshold = @max(
+        self.cfg.restitution_clamp_threshold,
+        2.0 * self.cfg.gravity.length() * dt,
+    );
+    // A load resting on a sleeper still arrives with the speed gravity gave it
+    // this step, so that much is allowed on top of the sleep threshold.
+    const sleep_policy = response.SleepPolicy{
+        .down = down,
+        .wake_speed = self.cfg.sleep_velocity_threshold + self.cfg.gravity.length() * dt,
+    };
 
-            if (iter == 0) {
-                if (down) |dir| {
-                    self.noteSupport(body1, body2, if (contact) |m| m.normal else null, dir);
-                    self.noteSupport(body2, body1, if (contact) |m| m.normal.negate() else null, dir);
+    for (pairs) |pair| {
+        const body1 = pair.a;
+        const body2 = pair.b;
+        const found = checkBodiesCollision(body1, body2);
+
+        if (down) |dir| {
+            self.noteSupport(body1, body2, if (found) |m| m.normal else null, dir);
+            self.noteSupport(body2, body1, if (found) |m| m.normal.negate() else null, dir);
+        }
+
+        const manifold = found orelse continue;
+        self.debug_stats.collisions_found += 1;
+        self.debug_stats.max_penetration = @max(self.debug_stats.max_penetration, manifold.penetration);
+        if (!needsSolving(body1, body2)) continue;
+
+        const options = response.ContactOptions{
+            .restitution = response.combine(body1.restitution, body2.restitution),
+            .friction = response.combine(body1.friction, body2.friction),
+            .restitution_threshold = restitution_threshold,
+            .sleep_policy = sleep_policy,
+        };
+        const points = manifold.contactPoints();
+        for (points, 0..) |point, index| {
+            var contact = response.Contact.init(body1, body2, point, manifold.normal, manifold.penetration, options);
+            const key = ContactKey.init(body1, body2, index, points.len);
+            if (self.stored_impulses.get(key)) |stored| {
+                const normal = if (key.low == @intFromPtr(body1)) manifold.normal else manifold.normal.negate();
+                if (stored.normal.dot(normal) >= warm_start_alignment) {
+                    contact.warmStart(stored.normal_impulse, stored.tangent_impulse);
                 }
             }
+            self.contacts.appendAssumeCapacity(contact);
+            self.contact_keys.appendAssumeCapacity(key);
+        }
+    }
 
-            if (contact) |manifold| {
-                if (iter == 0) self.debug_stats.collisions_found += 1;
-                self.debug_stats.max_penetration = @max(self.debug_stats.max_penetration, manifold.penetration);
+    // Every contact above was set up from the velocities the step began
+    // with. Only now do the stored impulses go in.
+    const contacts = self.contacts.items;
+    for (contacts) |*contact| contact.applyWarmStart();
 
-                if (iter == 0) {
-                    response.resolveWithMaterials(
-                        body1,
-                        body2,
-                        manifold,
-                        body1.restitution,
-                        body2.restitution,
-                        body1.friction,
-                        body2.friction,
-                        self.cfg.restitution_clamp_threshold,
-                        .{ .down = down, .wake_speed = self.cfg.sleep_velocity_threshold },
-                    );
-                }
-
-                if (manifold.penetration > self.cfg.contact_slop) {
-                    response.correctPositions(body1, body2, manifold, self.cfg.baumgarte_factor);
-                }
+    // Velocities: alternate the sweep direction so an impulse can travel
+    // through a stack in either direction within one step.
+    for (0..self.cfg.velocity_iterations) |iteration| {
+        if (iteration % 2 == 0) {
+            for (contacts) |*contact| contact.solveVelocity();
+        } else {
+            var i = contacts.len;
+            while (i > 0) {
+                i -= 1;
+                contacts[i].solveVelocity();
             }
         }
+    }
+
+    // Positions: remove what overlap is left beyond the slop.
+    for (0..self.cfg.position_iterations) |_| {
+        for (contacts) |*contact| contact.solvePosition(self.cfg.contact_slop, self.cfg.baumgarte_factor);
+    }
+
+    // Remember what each contact needed, for the next step to start from.
+    self.stored_impulses.clearRetainingCapacity();
+    for (contacts, self.contact_keys.items) |contact, key| {
+        if (contact.normal_impulse <= 0.0) continue;
+        self.stored_impulses.putAssumeCapacity(key, .{
+            .normal = if (key.low == @intFromPtr(contact.body1)) contact.normal else contact.normal.negate(),
+            .normal_impulse = contact.normal_impulse,
+            .tangent_impulse = contact.tangent_impulse,
+        });
     }
 
     // A sleeping body whose support moved away, started moving, or was removed

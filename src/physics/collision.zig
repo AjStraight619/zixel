@@ -13,5 +13,4 @@ pub const SpatialHash = broadphase.SpatialHash;
 
 // Convenience functions
 pub const checkBodiesCollision = narrowphase.checkBodiesCollision;
-pub const resolveWithMaterials = response.resolveWithMaterials;
-pub const correctPositions = response.correctPositions;
+pub const Contact = response.Contact;

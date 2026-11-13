@@ -267,28 +267,38 @@ test "a body spinning in place is not put to sleep" {
 }
 
 test "a body asleep on a kinematic platform wakes when the platform starts moving" {
-    var world = World.init(std.testing.allocator);
-    defer world.deinit();
-    var physics = try Physics.init(std.testing.allocator, .{});
-    defer physics.deinit();
-    const box_handle = try world.spawn(.{
-        .position = .init(0, -20),
-        .body = .{ .shape = .rect(20, 20), .restitution = 0 },
-    });
-    const platform_handle = try world.spawn(.{
-        .position = .init(0, 0),
-        .body = .{ .kind = .kinematic, .shape = .rect(100, 20), .restitution = 0 },
-    });
-    stepFor(&physics, &world, 2);
-    const box = &world.get(box_handle).?.body;
-    try std.testing.expect(box.isSleeping());
-    const rest_y = box.position.y;
+    // With no friction the platform slides out from under the box, which must
+    // wake and fall. With friction the box wakes and is carried along.
+    for ([_]f32{ 0, 0.5 }) |friction| {
+        var world = World.init(std.testing.allocator);
+        defer world.deinit();
+        var physics = try Physics.init(std.testing.allocator, .{});
+        defer physics.deinit();
+        const box_handle = try world.spawn(.{
+            .position = .init(0, -20),
+            .body = .{ .shape = .rect(20, 20), .restitution = 0, .friction = friction },
+        });
+        const platform_handle = try world.spawn(.{
+            .position = .init(0, 0),
+            .body = .{ .kind = .kinematic, .shape = .rect(100, 20), .restitution = 0 },
+        });
+        stepFor(&physics, &world, 2);
+        const box = &world.get(box_handle).?.body;
+        try std.testing.expect(box.isSleeping());
+        const rest_y = box.position.y;
 
-    world.get(platform_handle).?.body.velocity = .{ .x = 200, .y = 0 };
-    stepFor(&physics, &world, 2);
-    // The platform has left; the box woke up and fell instead of floating.
-    try std.testing.expect(!box.isSleeping());
-    try std.testing.expect(box.position.y > rest_y + 100);
+        world.get(platform_handle).?.body.velocity = .{ .x = 200, .y = 0 };
+        stepFor(&physics, &world, 2);
+        try std.testing.expect(!box.isSleeping());
+        if (friction == 0) {
+            // The platform has left; the box fell instead of floating.
+            try std.testing.expect(box.position.y > rest_y + 100);
+        } else {
+            // The box rides the platform at the platform's speed.
+            try std.testing.expectApproxEqAbs(rest_y, box.position.y, 1.0);
+            try std.testing.expectApproxEqAbs(@as(f32, 200), box.velocity.x, 5.0);
+        }
+    }
 }
 
 test "sleeping bodies fall when what they rest on is removed, stack included" {
