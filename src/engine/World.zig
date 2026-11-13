@@ -169,14 +169,10 @@ pub fn removeByOwner(self: *World, owner: Entity.Owner) void {
     }
 }
 
-/// Clear all entities (except persistent ones if keep_persistent is true)
-pub fn clearAll(self: *World, keep_persistent: bool) void {
+/// Remove every entity, whoever owns it. Existing handles become stale.
+pub fn clear(self: *World) void {
     for (self.slots.items, 0..) |*slot, i| {
-        if (!slot.alive) continue;
-
-        if (keep_persistent and slot.entity.owner == .none) continue;
-
-        self.removeSlot(@intCast(i));
+        if (slot.alive) self.removeSlot(@intCast(i));
     }
 }
 
@@ -214,7 +210,7 @@ test "removed entity handles stay invalid when slots are reused" {
     defer world.deinit();
     const first = try world.spawn(.{ .position = .init(0, 0), .body = .{ .shape = .rect(10, 10) } });
     const second = try world.spawn(.{ .position = .init(0, 0), .body = .{ .kind = .static, .shape = .rect(10, 10) } });
-    world.clearAll(false);
+    world.clear();
     _ = try world.spawn(.{ .position = .init(0, 0), .body = .{ .shape = .rect(10, 10) } });
     try std.testing.expect(world.get(first) == null);
     try std.testing.expect(world.get(second) == null);
@@ -242,7 +238,7 @@ fn spawnAndRemoveWithFailures(alloc: Allocator) !void {
     defer world.deinit();
     for (0..8) |_| _ = try world.spawn(.{ .name = "Named" });
     const before = world.entityCount();
-    world.clearAll(false);
+    world.clear();
     // Every removed slot is reusable: respawning does not grow slot storage.
     for (0..before) |_| _ = try world.spawn(.{});
     try std.testing.expectEqual(before, world.slots.items.len);

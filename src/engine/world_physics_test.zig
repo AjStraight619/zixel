@@ -140,7 +140,7 @@ test "body iterator preserves broadphase pairs and skips removed entities" {
     const a = &world.get(first).?.body;
     const b = &world.get(second).?.body;
     try std.testing.expect((pair.a == a and pair.b == b) or (pair.a == b and pair.b == a));
-    world.clearAll(false);
+    world.clear();
     _ = try world.spawn(.{ .position = .init(0, 0), .body = .{ .shape = .rect(10, 10) } });
     try physics.spatial_hash.update(world.bodies());
     try std.testing.expectEqual(@as(usize, 0), physics.spatial_hash.pairs.items.len);

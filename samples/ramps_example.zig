@@ -142,7 +142,7 @@ pub const RampsScene = struct {
 
         // Clear all on 'C'
         if (self.ctx.input.isKeyPressed(.c)) {
-            self.ctx.world.clearAll(false);
+            self.ctx.world.clear();
             self.sprites.clearRetainingCapacity();
             self.buildLevel() catch {};
         }

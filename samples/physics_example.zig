@@ -94,7 +94,7 @@ pub const PhysicsScene = struct {
 
         // Clear all dynamic bodies on 'C'
         if (self.ctx.input.isKeyPressed(.c)) {
-            self.ctx.world.clearAll(false);
+            self.ctx.world.clear();
             self.sprites.clearRetainingCapacity();
             self.rebuildWalls() catch {};
         }
