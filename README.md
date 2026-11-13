@@ -9,6 +9,7 @@ for this revision. Dependencies are pinned by commit and package hash.
 ```sh
 zig version                 # should print 0.16.0
 zig build                   # editor, CLI, and all samples
+zig build check             # compile everything, install nothing
 zig build test
 zig build test -Dtest-filter="user data"   # only tests whose name contains this
 zig build run -- /path/to/project

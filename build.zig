@@ -13,6 +13,9 @@ pub fn build(b: *std.Build) !void {
         "test-filter",
         "Only run tests whose name contains this text (may be repeated)",
     ) orelse &.{};
+    // Compiles every program and test without installing or running anything,
+    // for quick error checking and editor build-on-save.
+    const check_step = b.step("check", "Compile everything without installing it");
 
     const buildinfo = b.addOptions();
 
@@ -71,6 +74,7 @@ pub fn build(b: *std.Build) !void {
     editor_exe.root_module.addImport("cimgui", dep_cimgui.module(cimgui_conf.module_name));
     editor_exe.root_module.addOptions("zixel_buildinfo", buildinfo);
     b.installArtifact(editor_exe);
+    check_step.dependOn(&b.addExecutable(.{ .name = "zixel_editor", .root_module = editor_exe.root_module }).step);
 
     // Run Command for Editor
     const run_step = b.step("run", "Run the Zixel editor");
@@ -90,6 +94,7 @@ pub fn build(b: *std.Build) !void {
     cli_exe.root_module.addImport("zixel_new", zixel_game_mod);
     cli_exe.root_module.addOptions("zixel_buildinfo", buildinfo);
     b.installArtifact(cli_exe);
+    check_step.dependOn(&b.addExecutable(.{ .name = "zixel", .root_module = cli_exe.root_module }).step);
 
     const run_cli_step = b.step("cli", "Run the Zixel CLI");
     const run_cli_cmd = b.addRunArtifact(cli_exe);
@@ -130,6 +135,7 @@ pub fn build(b: *std.Build) !void {
         sample_exe.root_module.addOptions("zixel_buildinfo", buildinfo);
 
         b.installArtifact(sample_exe);
+        check_step.dependOn(&b.addExecutable(.{ .name = s.exe_name, .root_module = sample_exe.root_module }).step);
 
         const run_sample_step = b.step(s.run_step, s.desc);
         const run_sample_cmd = b.addRunArtifact(sample_exe);
@@ -187,5 +193,6 @@ pub fn build(b: *std.Build) !void {
     for (test_modules) |module| {
         const tests = b.addTest(.{ .root_module = module, .filters = test_filters });
         test_step.dependOn(&b.addRunArtifact(tests).step);
+        check_step.dependOn(&b.addTest(.{ .root_module = module }).step);
     }
 }
