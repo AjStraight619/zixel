@@ -53,7 +53,8 @@ pub fn build(b: *std.Build) !void {
 
     // Module B: For the Editor (Heavy)
     // It uses the SAME source code ("src/root.zig"), but imports the "Heavy" Sokol.
-    const zixel_editor_mod = b.addModule("zixel_editor_lib", .{
+    // Private to this build: packages that depend on Zixel only see Module A.
+    const zixel_editor_mod = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
