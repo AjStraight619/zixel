@@ -8,6 +8,11 @@ fn projectVersionFromZon() []const u8 {
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const test_filters = b.option(
+        []const []const u8,
+        "test-filter",
+        "Only run tests whose name contains this text (may be repeated)",
+    ) orelse &.{};
 
     const buildinfo = b.addOptions();
 
@@ -143,26 +148,19 @@ pub fn build(b: *std.Build) !void {
     const bench_step = b.step("bench", "Measure headless physics (use -Doptimize=ReleaseFast)");
     bench_step.dependOn(&run_benchmarks.step);
 
-    // Tests
-    const mod_tests = b.addTest(.{ .root_module = zixel_game_mod });
-    const run_mod_tests = b.addRunArtifact(mod_tests);
-
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_mod_tests.step);
-    const editor_args_tests = b.addTest(.{ .root_module = b.createModule(.{
+    // Tests: one binary per root file, all behind `zig build test`.
+    const editor_args_mod = b.createModule(.{
         .root_source_file = b.path("editor/Args.zig"),
         .target = target,
         .optimize = optimize,
-    }) });
-    test_step.dependOn(&b.addRunArtifact(editor_args_tests).step);
-    const editor_project_tests = b.addTest(.{ .root_module = b.createModule(.{
+    });
+    const editor_project_mod = b.createModule(.{
         .root_source_file = b.path("editor/project.zig"),
         .target = target,
         .optimize = optimize,
-    }) });
-    test_step.dependOn(&b.addRunArtifact(editor_project_tests).step);
+    });
     // Editor state, built against the same engine module and UI library as the editor.
-    const editor_state_tests = b.addTest(.{ .root_module = b.createModule(.{
+    const editor_state_mod = b.createModule(.{
         .root_source_file = b.path("editor/Editor.zig"),
         .target = target,
         .optimize = optimize,
@@ -170,13 +168,24 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "zixel_new", .module = zixel_editor_mod },
             .{ .name = "cimgui", .module = dep_cimgui.module(cimgui_conf.module_name) },
         },
-    }) });
-    test_step.dependOn(&b.addRunArtifact(editor_state_tests).step);
-    const cli_tests = b.addTest(.{ .root_module = b.createModule(.{
+    });
+    const cli_parse_mod = b.createModule(.{
         .root_source_file = b.path("cli/parse.zig"),
         .target = target,
         .optimize = optimize,
-    }) });
-    cli_tests.root_module.addOptions("zixel_buildinfo", buildinfo);
-    test_step.dependOn(&b.addRunArtifact(cli_tests).step);
+    });
+    cli_parse_mod.addOptions("zixel_buildinfo", buildinfo);
+
+    const test_step = b.step("test", "Run tests");
+    const test_modules = [_]*std.Build.Module{
+        zixel_game_mod,
+        editor_args_mod,
+        editor_project_mod,
+        editor_state_mod,
+        cli_parse_mod,
+    };
+    for (test_modules) |module| {
+        const tests = b.addTest(.{ .root_module = module, .filters = test_filters });
+        test_step.dependOn(&b.addRunArtifact(tests).step);
+    }
 }

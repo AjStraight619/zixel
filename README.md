@@ -10,6 +10,7 @@ for this revision. Dependencies are pinned by commit and package hash.
 zig version                 # should print 0.16.0
 zig build                   # editor, CLI, and all samples
 zig build test
+zig build test -Dtest-filter="user data"   # only tests whose name contains this
 zig build run -- /path/to/project
 zig build run-physics-example
 zig build run-persist-example   # user data surviving a scene change
