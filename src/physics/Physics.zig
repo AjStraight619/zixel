@@ -146,6 +146,16 @@ fn stepPhysics(self: *Physics, bodies: anytype, dt: f32) void {
 fn integrateVelocities(self: *Physics, bodies: anytype, dt: f32) void {
     var iter = bodies;
     while (iter.next()) |body| {
+        // Going to sleep zeroes a body's velocity and spin, and nothing in
+        // the solver moves a sleeper without waking it. So a sleeper that
+        // has either was given it by the game, through a plain field write
+        // that had no way to announce itself. This is where it is noticed.
+        if (body.isSleeping() and
+            (body.velocity.x != 0 or body.velocity.y != 0 or body.angular_velocity != 0))
+        {
+            body.wakeUp();
+        }
+
         if (body.kind == .dynamic) {
             if (body.isSleeping()) {
                 self.debug_stats.sleeping_bodies += 1;

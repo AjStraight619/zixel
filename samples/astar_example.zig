@@ -330,7 +330,6 @@ pub fn main() !void {
         .physics = .{
             .gravity = Vec2.init(0, 0),
             .linear_damping = 0.02,
-            .allow_sleeping = false,
         },
     });
 

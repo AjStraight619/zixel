@@ -382,3 +382,77 @@ test "a zero-mass dynamic body never produces NaN" {
         try std.testing.expect(std.math.isFinite(body.rotation));
     }
 }
+
+test "setting the velocity of a sleeping body moves it" {
+    // On a frictionless floor under gravity, and floating with no gravity.
+    for ([_]f32{ 980, 0 }) |gravity| {
+        var world = World.init(std.testing.allocator);
+        defer world.deinit();
+        var physics = try Physics.init(std.testing.allocator, .{ .gravity = .{ .x = 0, .y = gravity } });
+        defer physics.deinit();
+        _ = try world.spawn(.{ .position = .init(0, 30), .body = .{ .kind = .static, .shape = .rect(2000, 20), .friction = 0 } });
+        const handle = try world.spawn(.{ .position = .init(0, 10), .body = .{ .shape = .rect(20, 20), .friction = 0 } });
+        const box = &world.get(handle).?.body;
+        stepFor(&physics, &world, 2);
+        try std.testing.expect(box.isSleeping());
+        const start_x = box.position.x;
+
+        // A plain field write, the way a game moves its player.
+        box.velocity.x = 120;
+        stepFor(&physics, &world, 0.5);
+        try std.testing.expect(!box.isSleeping());
+        try std.testing.expect(box.position.x > start_x + 40);
+    }
+}
+
+test "setting the spin of a sleeping body turns it" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{ .gravity = .{ .x = 0, .y = 0 } });
+    defer physics.deinit();
+    const handle = try world.spawn(.{ .position = .init(0, 0), .body = .{ .shape = .rect(20, 20) } });
+    const box = &world.get(handle).?.body;
+    stepFor(&physics, &world, 1);
+    try std.testing.expect(box.isSleeping());
+
+    box.angular_velocity = 3;
+    stepFor(&physics, &world, 0.5);
+    try std.testing.expect(box.rotation > 0.3);
+}
+
+test "a body driven by writing a slow velocity every step keeps moving" {
+    // 10 units/s is below the sleep threshold, so the body keeps dozing off
+    // while it is being driven. It may lose the odd step, never the journey.
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{ .gravity = .{ .x = 0, .y = 0 } });
+    defer physics.deinit();
+    const handle = try world.spawn(.{ .position = .init(0, 0), .body = .{ .shape = .circ(5) } });
+    const body = &world.get(handle).?.body;
+    for (0..120) |_| {
+        body.velocity = .init(10, 0);
+        stepFor(&physics, &world, 1.0 / 60.0);
+    }
+    // Two seconds at 10 units/s is 20 units.
+    try std.testing.expect(body.position.x > 17);
+    try std.testing.expect(body.position.x < 20.5);
+}
+
+test "a sleeping body moved into the air falls back down" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var physics = try Physics.init(std.testing.allocator, .{});
+    defer physics.deinit();
+    _ = try world.spawn(.{ .position = .init(0, 30), .body = .{ .kind = .static, .shape = .rect(400, 20) } });
+    const handle = try world.spawn(.{ .position = .init(0, 10), .body = .{ .shape = .rect(20, 20), .restitution = 0 } });
+    const box = &world.get(handle).?.body;
+    stepFor(&physics, &world, 2);
+    try std.testing.expect(box.isSleeping());
+    const rest_y = box.position.y;
+
+    box.position.y -= 150;
+    stepFor(&physics, &world, 0.1);
+    try std.testing.expect(!box.isSleeping());
+    stepFor(&physics, &world, 3);
+    try std.testing.expectApproxEqAbs(rest_y, box.position.y, 1.0);
+}

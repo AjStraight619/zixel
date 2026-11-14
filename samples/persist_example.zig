@@ -242,7 +242,6 @@ pub fn main(init: std.process.Init) !void {
         },
         .physics = .{
             .gravity = Vec2.init(0, 700),
-            .allow_sleeping = false,
         },
     });
     try engine.createSceneWith(Game, .{&engine});

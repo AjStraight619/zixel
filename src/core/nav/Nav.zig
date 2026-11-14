@@ -332,3 +332,33 @@ fn navInitWithFailures(alloc: Allocator) !void {
 test "nav init cleans up on allocation failure" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, navInitWithFailures, .{});
 }
+
+test "an agent that fell asleep while waiting sets off when given a target" {
+    const Physics = @import("../../physics/Physics.zig");
+    const alloc = std.testing.allocator;
+    var world = World.init(alloc);
+    defer world.deinit();
+    // Top-down: no gravity, and sleeping left on as it is by default.
+    var physics = try Physics.init(alloc, .{ .gravity = .{ .x = 0, .y = 0 } });
+    defer physics.deinit();
+    var nav = try Nav.init(alloc, .{ .cell_size = 10, .width = 8, .height = 8 });
+    defer nav.deinit();
+    const agent = try world.spawn(.{ .position = .init(5, 5), .body = .{ .shape = .circ(3) } });
+    nav.rebuildBlockedFromWorld(&world);
+
+    const dt: f32 = 1.0 / 60.0;
+    for (0..60) |_| {
+        nav.update(&world, dt);
+        physics.update(world.bodies(), dt);
+    }
+    try std.testing.expect(world.get(agent).?.body.isSleeping());
+
+    try nav.setTargetWorld(agent, Vec2.init(75, 75));
+    for (0..180) |_| {
+        nav.update(&world, dt);
+        physics.update(world.bodies(), dt);
+    }
+    try std.testing.expect(nav.hasArrived(agent));
+    const position = world.get(agent).?.body.position;
+    try std.testing.expect(position.x > 65 and position.y > 65);
+}
